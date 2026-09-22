@@ -1,48 +1,57 @@
 # Free Form 🚀
 
 > **A self-hostable, multi-modal markdown note-taking app and dynamic form engine.**  
-> Native Markdown • Custom Reusable Form Templates • Interactive Counters • Web Bookmarks • Scrapbook Posters • PWA
+> Native Markdown • Custom Reusable Form Templates • Interactive Counters • Web Bookmarks • Scrapbook Posters • Nested Notebooks • PWA
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 [![Docker Ready](https://img.shields.io/badge/Docker-Ready-blue.svg)](docker-compose.yml)
 [![PWA Ready](https://img.shields.io/badge/PWA-Installable-purple.svg)](client/vite.config.ts)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg?logo=typescript&logoColor=white)](tsconfig.json)
+[![Fastify](https://img.shields.io/badge/Fastify-v5-000000.svg?logo=fastify&logoColor=white)](https://fastify.dev/)
+[![SQLite WAL](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57.svg?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 
 ---
 
 ## 🌟 Why Free Form?
 
 Most note apps force you into one of two extremes:
-1. **Unconstrained freeform text** (Obsidian, Bear, Apple Notes) where logging repetitive, structured information (like vehicle maintenance, daily workouts, job inspections, or habit reviews) feels chaotic and inconsistent.
-2. **Heavy relational databases** (Notion, Airtable) that are sluggish on mobile, proprietary, cloud-dependent, and hoard your data in locked-in formats.
+1. **Unconstrained freeform text** (Obsidian, Bear, Apple Notes) where logging repetitive, structured information (such as vehicle logs, inspections, workouts, or daily standups) feels chaotic and inconsistent.
+2. **Heavy relational databases** (Notion, Airtable) that are sluggish on mobile, proprietary, cloud-dependent, and lock your notes into closed formats.
 
-**Free Form** bridges this divide. It's a clean, local-first note workspace where a notebook page can be:
-- 📝 **A Rich Markdown Note**: Write freely with TipTap WYSIWYG or toggle to raw Markdown source code anytime.
-- 📋 **A "Free Form" Structured Note (The Signature Gimmick)**: Design custom form templates (with text fields, numeric steppers with units, dropdowns, ratings, dynamic tables, and signature canvas) and fill them out repeatedly into any notebook.
-- 🔢 **An Interactive Counter**: One-tap increment/decrement counters with customizable step sizes, units, and timestamped activity logs.
-- 🔖 **A Webpage Bookmark**: Paste any link to scrape rich OpenGraph previews, thumbnails, and descriptions with personal annotations.
-- 🖼️ **A Scrapbook Poster**: Visual collage cards for photos and mood boards with a lightbox zoom view.
+**Free Form** bridges this divide. It is a clean, local-first note workspace where notes can be freely written in Markdown or created with structured, reusable form templates—complete with tallies, web bookmarks, and photo collages.
 
 ---
 
 ## 📸 Core Features
 
-### 1. The "Free Form" Template System
-- **Drag-and-Drop / Reorderable Template Builder**: Build schemas with header dividers, text areas, number steppers, dropdowns, checkboxes, star ratings, dynamic tables, and touch/mouse signature pads.
-- **Dual Representation**: Entries store structured JSON data (so you can re-open and edit them in the form runner anytime) **and** auto-generate clean, readable Markdown documents with YAML frontmatter.
-- **Template-Bound Notebooks**: Bind a notebook to a default template (e.g. a "Daily Standup" or "Car Log" notebook). Tapping `+` immediately opens that form template.
+### 1. 📋 The "Free Form" Template System
+* **Visual Template Builder**: Construct custom form templates with text fields, text areas, numeric steppers with units, dropdown selectors, checkboxes, star ratings (1–5), mini tables, signature pads, and section dividers.
+* **Smart Defaults**: Date fields auto-default to today (`YYYY-MM-DD`), time fields auto-default to right now (`HH:MM`), and tables can be configured with a default number of blank rows.
+* **Dual Representation (Form + Markdown)**: Submitting a form note stores raw JSON metadata **and** automatically generates formatted GitHub-Flavored Markdown. You can view it as a markdown note or re-open it in the form runner anytime.
+* **Template-Bound Notebooks**: Bind a notebook to a default form template (e.g. "Car Maintenance" or "Daily Standup"). Tapping `+` inside that notebook immediately launches that form template.
 
-### 2. Multi-Modal Note Types
-- **Markdown Editor (WYSIWYG + Source Toggle)**: Real-time rich text editor powered by TipTap with support for checklists, code blocks, tables, image uploads, and an instant toggle to raw Markdown.
-- **Tally Counters**: Fast +/- adjustments, reset buttons, and an audit trail log.
-- **Rich Bookmarks**: Automatic OpenGraph metadata scraping and favicon discovery.
-- **Scrapbook Galleries**: Multi-image photo grids with captioning and lightbox modal.
+### 2. 📝 Multi-Modal Note Types
+* **Markdown Notes**: Rich text editing powered by TipTap (WYSIWYG) with code blocks, checklists, quotes, and an instant toggle to raw Markdown source code.
+* **Interactive Counters**: One-tap tally counters with configurable step sizes, minimum/maximum limits, units, reset values, and a timestamped audit history log.
+* **Webpage Bookmarks**: Paste any URL to automatically crawl and embed rich OpenGraph previews, site names, favicons, and thumbnail images.
+* **Scrapbook Posters**: Photo collage cards for visual collections with image captioning and full-screen lightbox zoom.
 
-### 3. Notebook Organization
-- Hierarchical notebooks with custom color dots and icons.
-- Instant search across titles, markdown content, and tags.
-- Filter by item type (Notes, Form Entries, Counters, Bookmarks, Scrapbooks).
-- Favorites, Pinned items, and Trash recovery.
-- **One-Click Workspace Export**: Download your entire workspace as a ZIP archive containing notebooks as folders, notes as clean `.md` files, and `free-form-backup.json`.
+### 3. 📁 Hierarchical Notebooks & Organization
+* **Nested Notebooks**: Create parent/child hierarchies to whatever depth you need.
+* **Sidebar Tree View**: Expandable/collapsible notebook tree with indentation, item counts, and quick hover actions to add sub-notebooks.
+* **In-Notebook Breadcrumbs & Sub-Notebooks Grid**: When browsing inside a notebook, clickable breadcrumb paths and a top sub-notebooks card strip allow seamless navigation.
+* **"Hide from All Items" Feed Protocol**: Flag individual notes or entire notebooks to be hidden from the global All Items feed so operational logbooks don't clutter your main view.
+* **Feed Reveal Toggle**: A 1-click banner above your notes reveals hidden items whenever you want to inspect them without digging through settings.
+
+### 4. 📱 Native Mobile PWA Experience
+* **Fixed 5-Tab Bottom Navigation**: Native app navigation on mobile with direct access to All Notes, Notebooks, Quick Add (+), Templates, and Favorites.
+* **Mobile Quick-Add Bottom Sheet**: Slides up smoothly with large touch targets (44px+) for one-tap creation.
+* **Mobile Back Navigation**: In-notebook mobile headers feature a `< [Parent / All Notes]` back button for fluid navigation.
+* **Offline Caching**: Built with `vite-plugin-pwa` and Workbox for fast cache-first asset loading and offline resilience.
+
+### 5. 🗄️ Local-First & Exportable
+* **Embedded SQLite WAL**: Zero-latency database with Write-Ahead Logging and automatic schema migrations.
+* **One-Click Workspace Backup**: Download your entire workspace as a ZIP archive containing notebooks as folders, notes as clean `.md` files, and `free-form-backup.json`.
 
 ---
 
@@ -56,7 +65,7 @@ Most note apps force you into one of two extremes:
    cd free-form
    ```
 
-2. Build & run the container test suite:
+2. Build & run with the automated local test runner:
    ```bash
    ./scripts/test-local.sh
    # or
@@ -64,7 +73,7 @@ Most note apps force you into one of two extremes:
    ```
 
 3. Open **`http://localhost:3000`** in your browser!
-   - All your data (SQLite database, file uploads, and signatures) is persisted in the local `./data` volume.
+   * All data (database and uploads) is persisted locally in `./data`.
 
 *(Note: If running Docker without root, ensure your user is in the `docker` group: `sudo usermod -aG docker $USER`)*
 
@@ -72,19 +81,24 @@ Most note apps force you into one of two extremes:
 
 ### Option B: Local Node.js Development
 
-Requirements: Node.js 18+ and npm.
+Requirements: Node.js 20+ and npm.
 
-1. Install dependencies:
+1. Install workspace dependencies:
    ```bash
    npm install
    ```
 
-2. Run development servers (Vite frontend on `:3000` + Fastify backend on `:3001` with hot-reload):
+2. Start development servers (Vite frontend on `:3000` + Fastify backend on `:3001` with hot-reload):
    ```bash
    npm run dev
    ```
 
-3. Build and run production server:
+3. Run backend unit tests:
+   ```bash
+   npm test --workspace=server
+   ```
+
+4. Build and start production bundle:
    ```bash
    npm run build
    npm start
@@ -94,33 +108,25 @@ Requirements: Node.js 18+ and npm.
 
 ## 📱 Mobile PWA Installation
 
-Free Form is built as a Progressive Web App (PWA):
-- **iOS Safari**: Tap the **Share** button -> **Add to Home Screen**.
-- **Android Chrome**: Tap the **Three Dots** menu -> **Install App**.
-- **Desktop (Chrome/Edge/Brave)**: Click the **Install** icon in the URL bar.
+Free Form passes all Progressive Web App installability criteria:
+* **iOS Safari**: Tap the **Share** button -> **Add to Home Screen**.
+* **Android Chrome**: Tap the **Three Dots** menu -> **Install App**.
+* **Desktop (Chrome/Edge/Brave)**: Click the **Install** icon in the URL bar.
 
-Enjoy full-screen standalone app experience with offline asset caching.
-
----
-
-## 🏗️ Technical Architecture
-
-- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, TipTap Editor, Lucide Icons, Vite-PWA.
-- **Backend**: Node.js, Fastify, TypeScript, Cheerio (OpenGraph scraping), Archiver (ZIP backup).
-- **Database**: SQLite (via `better-sqlite3`) in high-performance WAL mode. Single-file database (`freeform.db`) with zero maintenance.
-- **Storage**: Local uploads directory (`/data/uploads`).
+> [!NOTE]
+> **Android LAN Installation Tip:** When installing on Android over a local LAN IP (e.g. `192.168.x.x`), Chrome's cloud WebAPK minting server cannot route to private IPs and waits for an internal timeout (~90–120s) before falling back. Once deployed with HTTPS on a domain (or via a tunnel like Cloudflare Tunnel or Tailscale Funnel), installation takes **2–5 seconds**.
 
 ---
 
-## 🧪 Testing
+## 🏛️ Project Architecture & Documentation
 
-Run backend unit and integration tests:
-```bash
-npm test
-```
+Free Form adheres to a strict **Single Source of Truth (SSoT)** protocol:
+* **[`SSoT.md`](SSoT.md)**: The authoritative technical specification for system architecture, database schema, multi-modal engines, API contracts, mobile PWA details, and hard-won lessons.
+* **[`AGENTS.md`](AGENTS.md)**: Guidelines and mandatory rules for autonomous coding agents.
+* **[`.agents/artifacts/`](.agents/artifacts/)**: In-repo repository of architectural design plans, walkthroughs, and system reviews.
 
 ---
 
 ## 📄 License
 
-This project is open source and available under the [MIT License](LICENSE).
+MIT License © 2026 Free Form Contributors.
