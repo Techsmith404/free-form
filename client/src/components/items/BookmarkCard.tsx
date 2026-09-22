@@ -1,6 +1,6 @@
 import React from 'react';
 import { Item, BookmarkMetadata } from '../../types/index.js';
-import { ExternalLink, Globe, Trash2, Edit2, Bookmark } from 'lucide-react';
+import { ExternalLink, Globe, Trash2, Edit2, Bookmark, EyeOff } from 'lucide-react';
 
 interface BookmarkCardProps {
   item: Item;
@@ -17,7 +17,7 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
   const meta: BookmarkMetadata = item.metadata || { url: '#' };
 
   return (
-    <div className="flex flex-col justify-between rounded-2xl bg-zinc-900 border border-zinc-750/80 hover:border-blue-500/50 transition-all duration-200 shadow-lg shadow-black/40 ring-1 ring-white/5 overflow-hidden group">
+    <div className="flex flex-col justify-between rounded-2xl bg-zinc-900/95 border border-zinc-800 hover:border-zinc-700/80 transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 overflow-hidden group">
       {/* Cover Image */}
       {meta.ogImage ? (
         <div className="relative w-full h-44 bg-zinc-950 overflow-hidden border-b border-zinc-800">
@@ -50,9 +50,20 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
               )}
               <span className="truncate font-medium">{meta.siteName || meta.url}</span>
             </div>
-            <span className="px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-blue-500/15 text-blue-300 border border-blue-500/30 rounded-lg shrink-0">
-              Bookmark
-            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {Boolean(item.hide_from_all) && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/25 rounded-md"
+                  title="Hidden from All Items feed"
+                >
+                  <EyeOff className="w-3 h-3" />
+                  <span className="hidden sm:inline">Hidden</span>
+                </span>
+              )}
+              <span className="px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-blue-500/15 text-blue-300 border border-blue-500/30 rounded-lg">
+                Bookmark
+              </span>
+            </div>
           </div>
 
           {/* Title */}

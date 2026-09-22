@@ -35,7 +35,7 @@ import { FormRunnerModal } from './components/forms/FormRunnerModal.js';
 import { TemplateBuilderModal } from './components/forms/TemplateBuilderModal.js';
 import { MarkdownViewerModal } from './components/modals/MarkdownViewerModal.js';
 
-import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles } from 'lucide-react';
+import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Data State
@@ -52,12 +52,13 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [expandAllCards, setExpandAllCards] = useState<boolean>(false);
+  const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileFabMenuOpen, setMobileFabMenuOpen] = useState(false);
 
   // Modal States
   const [noteModal, setNoteModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
-  const [notebookModal, setNotebookModal] = useState<{ open: boolean; notebook?: Notebook | null }>({ open: false });
+  const [notebookModal, setNotebookModal] = useState<{ open: boolean; notebook?: Notebook | null; defaultParentId?: string | null }>({ open: false });
   const [bookmarkModal, setBookmarkModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
   const [counterModal, setCounterModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
   const [posterModal, setPosterModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
@@ -95,6 +96,27 @@ export const App: React.FC = () => {
     return notebooks.find((n) => n.id === activeNotebookId) || null;
   }, [notebooks, activeNotebookId]);
 
+  // Parent Notebook (for breadcrumbs and navigation)
+  const parentNotebook = useMemo(() => {
+    if (!activeNotebook?.parent_id) return null;
+    return notebooks.find((n) => n.id === activeNotebook.parent_id) || null;
+  }, [notebooks, activeNotebook]);
+
+  // Sub-Notebooks belonging to current active notebook
+  const subNotebooks = useMemo(() => {
+    if (!activeNotebook) return [];
+    return notebooks.filter((n) => n.parent_id === activeNotebook.id);
+  }, [notebooks, activeNotebook]);
+
+  // Count of items excluded from All Items feed
+  const hiddenItemsCount = useMemo(() => {
+    return items.filter((item) => {
+      if (item.hide_from_all === 1) return true;
+      const nb = notebooks.find((n) => n.id === item.notebook_id);
+      return nb?.hide_from_all === 1;
+    }).length;
+  }, [items, notebooks]);
+
   // If viewing a notebook linked to a form template, expand all cards by default
   useEffect(() => {
     setExpandAllCards(Boolean(activeNotebook?.default_template_id));
@@ -106,6 +128,12 @@ export const App: React.FC = () => {
       // 1. Notebook filter
       if (activeNotebookId && item.notebook_id !== activeNotebookId) {
         return false;
+      }
+      // 1b. Hide from All Items filter
+      if (!activeNotebookId && activeFilter === 'all' && !showHiddenItems && !searchQuery.trim()) {
+        if (item.hide_from_all === 1) return false;
+        const parentNb = notebooks.find((n) => n.id === item.notebook_id);
+        if (parentNb?.hide_from_all === 1) return false;
       }
       // 2. Favorites filter
       if (activeFilter === 'favorites' && !item.is_favorite) {
@@ -124,7 +152,7 @@ export const App: React.FC = () => {
       }
       return true;
     });
-  }, [items, activeNotebookId, activeFilter, selectedType, searchQuery]);
+  }, [items, activeNotebookId, activeFilter, selectedType, searchQuery, showHiddenItems, notebooks]);
 
   // Handlers for Items
   const handleItemSaved = (saved: Item) => {
@@ -223,7 +251,7 @@ export const App: React.FC = () => {
         activeFilter={activeFilter}
         onSelectFilter={setActiveFilter}
         onSelectNotebook={setActiveNotebookId}
-        onNewNotebook={() => setNotebookModal({ open: true, notebook: null })}
+        onNewNotebook={(parentId) => setNotebookModal({ open: true, notebook: null, defaultParentId: parentId || null })}
         onEditNotebook={(nb) => setNotebookModal({ open: true, notebook: nb })}
         onDeleteNotebook={handleDeleteNotebook}
         onNewNote={() => setNoteModal({ open: true, item: null })}
@@ -251,6 +279,12 @@ export const App: React.FC = () => {
           onToggleExpandAll={() => setExpandAllCards((prev) => !prev)}
           onQuickAdd={handleQuickAdd}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+          onBack={
+            activeNotebook
+              ? () => setActiveNotebookId(activeNotebook.parent_id || null)
+              : undefined
+          }
+          backLabel={parentNotebook ? parentNotebook.name : 'All Notes'}
         />
 
         {/* Views */}
@@ -270,6 +304,104 @@ export const App: React.FC = () => {
             />
           ) : (
             <div>
+              {/* Breadcrumbs & Sub-Notebooks Header */}
+              {activeNotebook && (
+                <div className="mb-4">
+                  {/* Breadcrumb Path */}
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2.5 overflow-x-auto no-scrollbar py-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveNotebookId(null)}
+                      className="hover:text-white transition flex items-center gap-1 shrink-0 font-medium"
+                    >
+                      <Folder className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>All Items</span>
+                    </button>
+                    {parentNotebook && (
+                      <>
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                        <button
+                          type="button"
+                          onClick={() => setActiveNotebookId(parentNotebook.id)}
+                          className="hover:text-white transition truncate max-w-[130px] shrink-0 font-medium"
+                        >
+                          {parentNotebook.name}
+                        </button>
+                      </>
+                    )}
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+                    <span className="text-zinc-200 font-bold truncate max-w-[160px] shrink-0">
+                      {activeNotebook.name}
+                    </span>
+                  </div>
+
+                  {/* Sub-Notebooks Cards */}
+                  {subNotebooks.length > 0 && (
+                    <div className="mb-4 p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                          <Folder className="w-3.5 h-3.5 text-brand-400" />
+                          <span>Sub-Notebooks ({subNotebooks.length})</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNotebookModal({ open: true, notebook: null, defaultParentId: activeNotebook.id })
+                          }
+                          className="flex items-center gap-1 text-xs font-semibold text-brand-400 hover:text-brand-300 transition"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Sub-Notebook</span>
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {subNotebooks.map((sub) => (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            onClick={() => setActiveNotebookId(sub.id)}
+                            className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 text-left transition shadow-sm active:scale-98 group"
+                          >
+                            <div className="flex items-center gap-2 truncate min-w-0">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: sub.color || '#22c55e' }}
+                              />
+                              <span className="text-xs font-semibold text-zinc-200 group-hover:text-white truncate">
+                                {sub.name}
+                              </span>
+                            </div>
+                            {sub.item_count !== undefined && (
+                              <span className="text-[11px] text-zinc-400 font-mono ml-1.5">
+                                {sub.item_count}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Hidden Items Indicator / Toggle in All Items view */}
+              {!activeNotebookId && activeFilter === 'all' && hiddenItemsCount > 0 && (
+                <div className="flex items-center justify-between mb-4 px-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowHiddenItems(!showHiddenItems)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-semibold text-zinc-300 hover:text-white transition shadow-sm"
+                  >
+                    <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                    <span>
+                      {showHiddenItems
+                        ? `Showing ${hiddenItemsCount} hidden items (click to hide)`
+                        : `${hiddenItemsCount} hidden item${hiddenItemsCount > 1 ? 's' : ''} excluded from feed (click to reveal)`}
+                    </span>
+                  </button>
+                </div>
+              )}
+
               {/* Empty State */}
               {filteredItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto my-12 border-2 border-dashed border-zinc-800/80 rounded-3xl bg-zinc-900/30">
@@ -398,27 +530,135 @@ export const App: React.FC = () => {
         </main>
       </div>
 
-      {/* Mobile Floating Action Button (FAB) */}
-      <div className="fixed bottom-6 right-5 z-40 lg:hidden flex flex-col items-end gap-2.5">
-        {mobileFabMenuOpen && (
-          <div
-            className="fixed inset-0 z-30 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-            onClick={() => setMobileFabMenuOpen(false)}
-          />
-        )}
+      {/* Native Mobile Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/80 px-3 py-1.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] lg:hidden flex items-center justify-around shadow-2xl">
+        {/* Tab 1: All Items */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveNotebookId(null);
+            setActiveFilter('all');
+          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
+            activeFilter === 'all' && activeNotebookId === null
+              ? 'text-brand-400 font-bold'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <FileText className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 font-medium">All Notes</span>
+        </button>
 
-        {mobileFabMenuOpen && (
-          <div className="relative z-40 flex flex-col items-end gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        {/* Tab 2: Notebooks */}
+        <button
+          type="button"
+          onClick={() => setMobileSidebarOpen(true)}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
+            activeNotebookId !== null
+              ? 'text-brand-400 font-bold'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Folder className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 font-medium">Notebooks</span>
+        </button>
+
+        {/* Tab 3: Center Elevated Add (+) Button */}
+        <div className="relative -top-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (activeNotebook?.default_template_id) {
+                const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
+                if (tpl) {
+                  setFormRunnerModal({ open: true, template: tpl });
+                  return;
+                }
+              }
+              setMobileFabMenuOpen(!mobileFabMenuOpen);
+            }}
+            className="h-12 w-12 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center shadow-lg shadow-brand-500/40 active:scale-95 transition transform ring-4 ring-zinc-950"
+            aria-label="New Item"
+          >
+            <Plus
+              className={`w-6 h-6 stroke-[2.5] transition-transform duration-200 ${
+                mobileFabMenuOpen ? 'rotate-45' : ''
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Tab 4: Form Templates */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveNotebookId(null);
+            setActiveFilter('templates');
+          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
+            activeFilter === 'templates'
+              ? 'text-brand-400 font-bold'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <ClipboardList className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 font-medium">Templates</span>
+        </button>
+
+        {/* Tab 5: Favorites */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveNotebookId(null);
+            setActiveFilter('favorites');
+          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
+            activeFilter === 'favorites'
+              ? 'text-amber-400 font-bold'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Star className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 font-medium">Favorites</span>
+        </button>
+      </nav>
+
+      {/* Mobile Quick Add Bottom Sheet Menu */}
+      {mobileFabMenuOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden flex flex-col justify-end p-4 animate-in fade-in duration-150"
+          onClick={() => setMobileFabMenuOpen(false)}
+        >
+          <div
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-2xl space-y-2 mb-16 animate-in slide-in-from-bottom-5 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-2 pb-2 text-xs font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 flex items-center justify-between">
+              <span>Create New</span>
+              <button
+                type="button"
+                onClick={() => setMobileFabMenuOpen(false)}
+                className="text-zinc-500 hover:text-zinc-300 p-1"
+              >
+                ✕
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => {
                 setMobileFabMenuOpen(false);
                 setNoteModal({ open: true, item: null });
               }}
-              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
             >
-              <span>Markdown Note</span>
-              <FileText className="w-4 h-4 text-brand-400" />
+              <div className="w-9 h-9 rounded-xl bg-brand-500/15 border border-brand-500/30 flex items-center justify-center text-brand-400 shrink-0">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-zinc-100">Markdown Note</div>
+                <div className="text-[11px] text-zinc-400">Rich WYSIWYG & markdown notes</div>
+              </div>
             </button>
 
             {templates.length > 0 && (
@@ -432,10 +672,15 @@ export const App: React.FC = () => {
                     template: boundTpl || templates[0]
                   });
                 }}
-                className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-brand-500 text-white font-bold text-xs shadow-2xl shadow-brand-500/30 active:scale-95 transition"
+                className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
               >
-                <span>Fill Form Note</span>
-                <ClipboardList className="w-4 h-4" />
+                <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <ClipboardList className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-zinc-100">Fill Form Note</div>
+                  <div className="text-[11px] text-zinc-400">Standardized form entries and logs</div>
+                </div>
               </button>
             )}
 
@@ -445,10 +690,15 @@ export const App: React.FC = () => {
                 setMobileFabMenuOpen(false);
                 setCounterModal({ open: true, item: null });
               }}
-              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
             >
-              <span>Counter</span>
-              <Hash className="w-4 h-4 text-emerald-400" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                <Hash className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-zinc-100">Interactive Counter</div>
+                <div className="text-[11px] text-zinc-400">Track counts, tallies, and habits</div>
+              </div>
             </button>
 
             <button
@@ -457,10 +707,15 @@ export const App: React.FC = () => {
                 setMobileFabMenuOpen(false);
                 setBookmarkModal({ open: true, item: null });
               }}
-              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
             >
-              <span>Bookmark</span>
-              <Bookmark className="w-4 h-4 text-blue-400" />
+              <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <Bookmark className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-zinc-100">Web Bookmark</div>
+                <div className="text-[11px] text-zinc-400">Save links with auto metadata preview</div>
+              </div>
             </button>
 
             <button
@@ -469,32 +724,40 @@ export const App: React.FC = () => {
                 setMobileFabMenuOpen(false);
                 setPosterModal({ open: true, item: null });
               }}
-              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
             >
-              <span>Scrapbook</span>
-              <Images className="w-4 h-4 text-purple-400" />
+              <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                <Images className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-zinc-100">Scrapbook Poster</div>
+                <div className="text-[11px] text-zinc-400">Curate photos and visual collections</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMobileFabMenuOpen(false);
+                setNotebookModal({ open: true, notebook: null, defaultParentId: activeNotebookId });
+              }}
+              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
+            >
+              <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300 shrink-0">
+                <Folder className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-zinc-100">
+                  {activeNotebook ? 'New Sub-Notebook' : 'New Notebook'}
+                </div>
+                <div className="text-[11px] text-zinc-400">
+                  {activeNotebook ? `Nest inside ${activeNotebook.name}` : 'Organize into categories'}
+                </div>
+              </div>
             </button>
           </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => {
-            if (activeNotebook?.default_template_id) {
-              const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
-              if (tpl) {
-                setFormRunnerModal({ open: true, template: tpl });
-                return;
-              }
-            }
-            setMobileFabMenuOpen(!mobileFabMenuOpen);
-          }}
-          className="relative z-40 h-14 w-14 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center shadow-2xl shadow-brand-500/40 active:scale-90 transition transform"
-          aria-label="New Item"
-        >
-          <Plus className={`w-7 h-7 stroke-[3] transition-transform duration-200 ${mobileFabMenuOpen ? 'rotate-45' : ''}`} />
-        </button>
-      </div>
+        </div>
+      )}
 
       {/* Modals */}
       {noteModal.open && (
@@ -510,8 +773,10 @@ export const App: React.FC = () => {
       {notebookModal.open && (
         <NewNotebookModal
           existingNotebook={notebookModal.notebook}
+          notebooks={notebooks}
+          defaultParentId={notebookModal.defaultParentId}
           templates={templates}
-          onClose={() => setNotebookModal({ open: false, notebook: null })}
+          onClose={() => setNotebookModal({ open: false, notebook: null, defaultParentId: null })}
           onSaved={handleNotebookSaved}
         />
       )}

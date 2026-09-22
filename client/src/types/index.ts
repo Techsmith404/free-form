@@ -11,6 +11,7 @@ export interface Notebook {
   default_template_name?: string | null;
   view_mode: 'grid' | 'list' | 'split';
   sort_order: number;
+  hide_from_all?: number;
   created_at: string;
   updated_at: string;
   item_count?: number;
@@ -121,6 +122,7 @@ export interface Item {
   is_favorite: number;
   is_pinned: number;
   is_archived: number;
+  hide_from_all?: number;
   created_at: string;
   updated_at: string;
   tags?: Tag[] | string[];

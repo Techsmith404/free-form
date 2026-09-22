@@ -10,6 +10,7 @@ export interface Notebook {
   default_template_id: string | null;
   view_mode: 'grid' | 'list' | 'split';
   sort_order: number;
+  hide_from_all?: number;
   created_at: string;
   updated_at: string;
 }
@@ -111,6 +112,7 @@ export interface Item {
   is_favorite: number; // 0 or 1
   is_pinned: number; // 0 or 1
   is_archived: number; // 0 or 1
+  hide_from_all?: number; // 0 or 1
   created_at: string;
   updated_at: string;
   tags?: Tag[];

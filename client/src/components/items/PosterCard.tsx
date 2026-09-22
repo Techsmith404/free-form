@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Item, PosterMetadata, PosterImage } from '../../types/index.js';
 import { uploadFile } from '../../api/index.js';
-import { Images, Plus, Trash2, Edit2, X, ZoomIn } from 'lucide-react';
+import { Images, Plus, Trash2, Edit2, X, ZoomIn, EyeOff } from 'lucide-react';
 
 interface PosterCardProps {
   item: Item;
@@ -68,9 +68,9 @@ export const PosterCard: React.FC<PosterCardProps> = ({
   };
 
   return (
-    <div className="flex flex-col justify-between rounded-2xl bg-zinc-900 border border-zinc-750/80 hover:border-purple-500/50 transition-all duration-200 shadow-lg shadow-black/40 ring-1 ring-white/5 overflow-hidden group">
+    <div className="flex flex-col justify-between rounded-2xl bg-zinc-900/95 border border-zinc-800 hover:border-zinc-700/80 transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 overflow-hidden group">
       {/* Header */}
-      <div className="p-5 border-b border-zinc-800/80 flex items-start justify-between gap-2">
+      <div className="p-4 sm:p-5 border-b border-zinc-800/80 flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30 rounded-lg">
@@ -80,6 +80,15 @@ export const PosterCard: React.FC<PosterCardProps> = ({
             {item.notebook_name && (
               <span className="text-xs font-medium text-zinc-400 truncate max-w-[140px]">
                 {item.notebook_name}
+              </span>
+            )}
+            {Boolean(item.hide_from_all) && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/25 rounded-md"
+                title="Hidden from All Items feed"
+              >
+                <EyeOff className="w-3 h-3" />
+                <span className="hidden sm:inline">Hidden</span>
               </span>
             )}
           </div>

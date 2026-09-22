@@ -12,6 +12,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
       type?: ItemType;
       is_favorite?: string;
       is_archived?: string;
+      include_hidden?: string;
       search?: string;
       tag?: string;
     };
@@ -20,7 +21,8 @@ export async function itemRoutes(fastify: FastifyInstance) {
       SELECT 
         i.*,
         n.name as notebook_name,
-        n.color as notebook_color
+        n.color as notebook_color,
+        n.hide_from_all as notebook_hide_from_all
       FROM items i
       LEFT JOIN notebooks n ON i.notebook_id = n.id
       WHERE 1=1
@@ -41,6 +43,9 @@ export async function itemRoutes(fastify: FastifyInstance) {
         sql += ` AND i.notebook_id = ?`;
         params.push(query.notebook_id);
       }
+    } else if (query.include_hidden !== '1') {
+      // Global feed: hide items flagged hide_from_all or belonging to a hidden notebook
+      sql += ` AND (i.hide_from_all = 0 OR i.hide_from_all IS NULL) AND (n.hide_from_all = 0 OR n.hide_from_all IS NULL)`;
     }
 
     if (query.type) {
@@ -100,7 +105,8 @@ export async function itemRoutes(fastify: FastifyInstance) {
       SELECT 
         i.*,
         n.name as notebook_name,
-        n.color as notebook_color
+        n.color as notebook_color,
+        n.hide_from_all as notebook_hide_from_all
       FROM items i
       LEFT JOIN notebooks n ON i.notebook_id = n.id
       WHERE i.id = ?
@@ -175,10 +181,11 @@ export async function itemRoutes(fastify: FastifyInstance) {
 
     const is_favorite = body.is_favorite ? 1 : 0;
     const is_pinned = body.is_pinned ? 1 : 0;
+    const hide_from_all = body.hide_from_all ? 1 : 0;
 
     db.prepare(`
-      INSERT INTO items (id, notebook_id, title, type, content, metadata, is_favorite, is_pinned, is_archived, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, notebook_id, title, type, content, metadata, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       notebook_id,
@@ -189,6 +196,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
       is_favorite,
       is_pinned,
       0,
+      hide_from_all,
       now,
       now
     );
@@ -265,6 +273,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
         is_favorite = COALESCE(?, is_favorite),
         is_pinned = COALESCE(?, is_pinned),
         is_archived = COALESCE(?, is_archived),
+        hide_from_all = COALESCE(?, hide_from_all),
         updated_at = ?
       WHERE id = ?
     `).run(
@@ -275,6 +284,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
       body.is_favorite !== undefined ? (body.is_favorite ? 1 : 0) : null,
       body.is_pinned !== undefined ? (body.is_pinned ? 1 : 0) : null,
       body.is_archived !== undefined ? (body.is_archived ? 1 : 0) : null,
+      body.hide_from_all !== undefined ? (body.hide_from_all ? 1 : 0) : null,
       now,
       id
     );

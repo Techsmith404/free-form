@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Notebook, FormTemplate } from '../../types/index.js';
 import { createNotebook, updateNotebook } from '../../api/index.js';
-import { X, Folder, Save, Sparkles } from 'lucide-react';
+import { X, Folder, Save, Sparkles, EyeOff } from 'lucide-react';
 
 interface NewNotebookModalProps {
   existingNotebook?: Notebook | null;
+  notebooks: Notebook[];
+  defaultParentId?: string | null;
   templates: FormTemplate[];
   onClose: () => void;
   onSaved: (notebook: Notebook) => void;
@@ -23,6 +25,8 @@ const PRESET_COLORS = [
 
 export const NewNotebookModal: React.FC<NewNotebookModalProps> = ({
   existingNotebook,
+  notebooks,
+  defaultParentId,
   templates,
   onClose,
   onSaved
@@ -30,11 +34,33 @@ export const NewNotebookModal: React.FC<NewNotebookModalProps> = ({
   const [name, setName] = useState(existingNotebook?.name || '');
   const [description, setDescription] = useState(existingNotebook?.description || '');
   const [color, setColor] = useState(existingNotebook?.color || '#22c55e');
+  const [parentId, setParentId] = useState<string | null>(
+    existingNotebook?.parent_id ?? defaultParentId ?? null
+  );
+  const [hideFromAll, setHideFromAll] = useState<boolean>(
+    Boolean(existingNotebook?.hide_from_all)
+  );
   const [defaultTemplateId, setDefaultTemplateId] = useState<string | null>(
     existingNotebook?.default_template_id || null
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Prevent circular nesting: cannot select self or descendants
+  const isDescendant = (candidateId: string, targetId: string): boolean => {
+    if (candidateId === targetId) return true;
+    let current = notebooks.find((n) => n.id === candidateId);
+    while (current && current.parent_id) {
+      if (current.parent_id === targetId) return true;
+      current = notebooks.find((n) => n.id === current?.parent_id);
+    }
+    return false;
+  };
+
+  const availableParents = notebooks.filter((n) => {
+    if (!existingNotebook) return true;
+    return !isDescendant(n.id, existingNotebook.id);
+  });
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +77,8 @@ export const NewNotebookModal: React.FC<NewNotebookModalProps> = ({
         name: name.trim(),
         description: description.trim(),
         color,
+        parent_id: parentId || null,
+        hide_from_all: hideFromAll ? 1 : 0,
         default_template_id: defaultTemplateId || null
       };
 
@@ -136,6 +164,26 @@ export const NewNotebookModal: React.FC<NewNotebookModalProps> = ({
             </div>
           </div>
 
+          {/* Parent Notebook for Nesting */}
+          <div>
+            <label className="block text-zinc-300 font-medium mb-1">Parent Notebook (Optional Nesting)</label>
+            <select
+              value={parentId || ''}
+              onChange={(e) => setParentId(e.target.value || null)}
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 text-xs focus:outline-none focus:border-brand-500"
+            >
+              <option value="">None (Top-Level Notebook)</option>
+              {availableParents.map((nb) => (
+                <option key={nb.id} value={nb.id}>
+                  📁 {nb.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-zinc-500 mt-1">
+              Nest this notebook inside another notebook to organize into hierarchies.
+            </p>
+          </div>
+
           {/* Template Binding */}
           <div className="pt-2 border-t border-zinc-800">
             <div className="flex items-center gap-1.5 mb-1">
@@ -157,6 +205,27 @@ export const NewNotebookModal: React.FC<NewNotebookModalProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Hide from All Items Toggle */}
+          <div className="pt-2 border-t border-zinc-800">
+            <label className="flex items-start gap-3 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 cursor-pointer hover:border-zinc-700 transition">
+              <input
+                type="checkbox"
+                checked={hideFromAll}
+                onChange={(e) => setHideFromAll(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-brand-500 bg-zinc-900 border-zinc-700 focus:ring-0 focus:ring-offset-0"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5 font-semibold text-zinc-200 text-xs">
+                  <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Hide from All Items</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                  Notes inside this notebook won&apos;t clutter your main feed. They will only appear when opening this notebook directly.
+                </p>
+              </div>
+            </label>
           </div>
 
           <div className="pt-4 border-t border-zinc-800 flex items-center justify-end gap-2">

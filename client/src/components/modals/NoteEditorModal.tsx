@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Notebook, Item } from '../../types/index.js';
 import { createItem, updateItem } from '../../api/index.js';
 import { TipTapEditor } from '../editor/TipTapEditor.js';
-import { X, Save, Folder, Star, Pin, Tag as TagIcon, FileText } from 'lucide-react';
+import { X, Save, Folder, Star, Pin, Tag as TagIcon, FileText, EyeOff } from 'lucide-react';
 
 interface NoteEditorModalProps {
   existingNote?: Item | null;
@@ -26,6 +26,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
   );
   const [isFavorite, setIsFavorite] = useState(Boolean(existingNote?.is_favorite));
   const [isPinned, setIsPinned] = useState(Boolean(existingNote?.is_pinned));
+  const [hideFromAll, setHideFromAll] = useState(Boolean(existingNote?.hide_from_all));
   const [tagsInput, setTagsInput] = useState(
     (existingNote?.tags || []).map((t) => (typeof t === 'string' ? t : t.name)).join(', ')
   );
@@ -50,6 +51,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
         type: 'note' as const,
         is_favorite: isFavorite ? 1 : 0,
         is_pinned: isPinned ? 1 : 0,
+        hide_from_all: hideFromAll ? 1 : 0,
         tags
       };
 
@@ -82,6 +84,19 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHideFromAll(!hideFromAll)}
+              className={`px-2.5 py-1.5 rounded-lg transition flex items-center gap-1.5 text-xs font-semibold ${
+                hideFromAll
+                  ? 'text-amber-400 bg-amber-400/10 border border-amber-400/30'
+                  : 'text-zinc-400 hover:bg-zinc-800'
+              }`}
+              title={hideFromAll ? 'Hidden from All Items feed' : 'Visible in All Items feed (click to hide)'}
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              <span>{hideFromAll ? 'Hidden from All' : 'Hide from All'}</span>
+            </button>
             <button
               type="button"
               onClick={() => setIsFavorite(!isFavorite)}

@@ -83,4 +83,41 @@ describe('Free Form Backend Core', () => {
     const history = db.prepare('SELECT * FROM counter_history WHERE item_id = ?').all(item.id);
     expect(history.length).toBeGreaterThan(0);
   });
+
+  it('should support hide_from_all on notebooks and items', () => {
+    const hiddenNbId = `nb-hidden-${nanoid()}`;
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO notebooks (id, name, hide_from_all, created_at, updated_at)
+      VALUES (?, ?, 1, ?, ?)
+    `).run(hiddenNbId, 'Secret Notebook', now, now);
+
+    const hiddenItemInNbId = `item-in-hidden-${nanoid()}`;
+    db.prepare(`
+      INSERT INTO items (id, notebook_id, title, type, hide_from_all, created_at, updated_at)
+      VALUES (?, ?, 'Inside Hidden Notebook', 'note', 0, ?, ?)
+    `).run(hiddenItemInNbId, hiddenNbId, now, now);
+
+    const soloHiddenItemId = `item-solo-hidden-${nanoid()}`;
+    db.prepare(`
+      INSERT INTO items (id, title, type, hide_from_all, created_at, updated_at)
+      VALUES (?, 'Solo Hidden Note', 'note', 1, ?, ?)
+    `).run(soloHiddenItemId, now, now);
+
+    // Default global query (include_hidden = 0)
+    const visibleItems = db.prepare(`
+      SELECT i.id FROM items i
+      LEFT JOIN notebooks n ON i.notebook_id = n.id
+      WHERE (i.hide_from_all = 0 OR i.hide_from_all IS NULL)
+        AND (n.hide_from_all = 0 OR n.hide_from_all IS NULL)
+        AND i.id IN (?, ?)
+    `).all(hiddenItemInNbId, soloHiddenItemId);
+
+    expect(visibleItems.length).toBe(0);
+
+    // Direct notebook query should still show items
+    const inNotebook = db.prepare('SELECT id FROM items WHERE notebook_id = ?').all(hiddenNbId);
+    expect(inNotebook.length).toBe(1);
+    expect((inNotebook[0] as any).id).toBe(hiddenItemInNbId);
+  });
 });

@@ -53,11 +53,12 @@ export async function notebookRoutes(fastify: FastifyInstance) {
     const default_template_id = body.default_template_id || null;
     const view_mode = body.view_mode || 'grid';
     const sort_order = body.sort_order || 0;
+    const hide_from_all = body.hide_from_all ? 1 : 0;
 
     db.prepare(`
-      INSERT INTO notebooks (id, name, description, color, icon, parent_id, default_template_id, view_mode, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, description, color, icon, parent_id, default_template_id, view_mode, sort_order, now, now);
+      INSERT INTO notebooks (id, name, description, color, icon, parent_id, default_template_id, view_mode, sort_order, hide_from_all, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, description, color, icon, parent_id, default_template_id, view_mode, sort_order, hide_from_all, now, now);
 
     const created = db.prepare('SELECT * FROM notebooks WHERE id = ?').get(id);
     return reply.code(201).send(created);
@@ -84,6 +85,7 @@ export async function notebookRoutes(fastify: FastifyInstance) {
         default_template_id = ?,
         view_mode = COALESCE(?, view_mode),
         sort_order = COALESCE(?, sort_order),
+        hide_from_all = COALESCE(?, hide_from_all),
         updated_at = ?
       WHERE id = ?
     `).run(
@@ -95,6 +97,7 @@ export async function notebookRoutes(fastify: FastifyInstance) {
       body.default_template_id !== undefined ? body.default_template_id : (existing as any).default_template_id,
       body.view_mode !== undefined ? body.view_mode : null,
       body.sort_order !== undefined ? body.sort_order : null,
+      body.hide_from_all !== undefined ? (body.hide_from_all ? 1 : 0) : null,
       now,
       id
     );

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Item, CounterMetadata, CounterHistoryEntry } from '../../types/index.js';
 import { counterAction, fetchCounterHistory } from '../../api/index.js';
-import { Plus, Minus, RotateCcw, History, Trash2, Edit2, Hash } from 'lucide-react';
+import { Plus, Minus, RotateCcw, History, Trash2, Edit2, Hash, EyeOff } from 'lucide-react';
 
 interface CounterCardProps {
   item: Item;
@@ -77,7 +77,7 @@ export const CounterCard: React.FC<CounterCardProps> = ({
   const step = meta.step || 1;
 
   return (
-    <div className="flex flex-col justify-between p-5 rounded-2xl bg-zinc-900 border border-zinc-750/80 hover:border-emerald-500/50 transition-all duration-200 shadow-lg shadow-black/40 ring-1 ring-white/5 group">
+    <div className="flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-zinc-900/95 border border-zinc-800 hover:border-zinc-700/80 transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 group">
       {/* Header */}
       <div>
         <div className="flex items-center justify-between gap-2 mb-2">
@@ -89,6 +89,15 @@ export const CounterCard: React.FC<CounterCardProps> = ({
             {item.notebook_name && (
               <span className="text-xs font-medium text-zinc-400 truncate max-w-[140px]">
                 {item.notebook_name}
+              </span>
+            )}
+            {Boolean(item.hide_from_all) && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/25 rounded-md"
+                title="Hidden from All Items feed"
+              >
+                <EyeOff className="w-3 h-3" />
+                <span className="hidden sm:inline">Hidden</span>
               </span>
             )}
           </div>

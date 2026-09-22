@@ -13,7 +13,8 @@ import {
   Sparkles,
   Plus,
   X,
-  ChevronsUpDown
+  ChevronsUpDown,
+  ChevronLeft
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -28,6 +29,8 @@ interface NavbarProps {
   onOpenMobileSidebar: () => void;
   isExpandedAll?: boolean;
   onToggleExpandAll?: () => void;
+  onBack?: () => void;
+  backLabel?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -41,7 +44,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onQuickAdd,
   onOpenMobileSidebar,
   isExpandedAll,
-  onToggleExpandAll
+  onToggleExpandAll,
+  onBack,
+  backLabel
 }) => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
@@ -49,16 +54,28 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800 px-4 sm:px-6 py-3 sm:py-3.5 space-y-3">
       {/* Top Row */}
       <div className="flex items-center justify-between gap-3">
-        {/* Left: Mobile Drawer Trigger + Notebook Header */}
+        {/* Left: Mobile Back Button OR Drawer Trigger + Notebook Header */}
         <div className="flex items-center gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={onOpenMobileSidebar}
-            className="lg:hidden h-11 w-11 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-750 text-zinc-300 hover:text-white active:scale-95 transition shrink-0"
-            aria-label="Open Navigation Menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="lg:hidden h-10 px-3 flex items-center gap-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 active:scale-95 transition shrink-0 text-xs font-bold"
+              title={backLabel || 'Go Back'}
+            >
+              <ChevronLeft className="w-4 h-4 text-brand-400" />
+              <span className="truncate max-w-[100px]">{backLabel || 'Back'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenMobileSidebar}
+              className="lg:hidden h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white active:scale-95 transition shrink-0"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
 
           <div className="truncate">
             <div className="flex items-center gap-2 truncate">
@@ -218,7 +235,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`h-9 px-4 rounded-xl transition shrink-0 flex items-center justify-center active:scale-95 ${
             selectedType === 'all'
               ? 'bg-zinc-100 text-zinc-950 font-bold shadow-md'
-              : 'bg-zinc-900 text-zinc-300 border border-zinc-750 hover:bg-zinc-800'
+              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800'
           }`}
         >
           All Items
@@ -230,7 +247,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`h-9 px-3.5 rounded-xl transition shrink-0 flex items-center gap-1.5 active:scale-95 ${
             selectedType === 'note'
               ? 'bg-zinc-100 text-zinc-950 font-bold shadow-md'
-              : 'bg-zinc-900 text-zinc-300 border border-zinc-750 hover:bg-zinc-800'
+              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800'
           }`}
         >
           <FileText className="w-4 h-4 text-brand-400" />
@@ -243,7 +260,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`h-9 px-3.5 rounded-xl transition shrink-0 flex items-center gap-1.5 active:scale-95 ${
             selectedType === 'form_entry'
               ? 'bg-brand-500 text-white font-bold shadow-md shadow-brand-500/25'
-              : 'bg-zinc-900 text-zinc-300 border border-zinc-750 hover:bg-zinc-800'
+              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800'
           }`}
         >
           <ClipboardList className="w-4 h-4 text-brand-400" />
@@ -256,7 +273,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`h-9 px-3.5 rounded-xl transition shrink-0 flex items-center gap-1.5 active:scale-95 ${
             selectedType === 'counter'
               ? 'bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
-              : 'bg-zinc-900 text-zinc-300 border border-zinc-750 hover:bg-zinc-800'
+              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800'
           }`}
         >
           <Hash className="w-4 h-4 text-emerald-400" />
@@ -269,7 +286,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`h-9 px-3.5 rounded-xl transition shrink-0 flex items-center gap-1.5 active:scale-95 ${
             selectedType === 'bookmark'
               ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/25'
-              : 'bg-zinc-900 text-zinc-300 border border-zinc-750 hover:bg-zinc-800'
+              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800'
           }`}
         >
           <Bookmark className="w-4 h-4 text-blue-400" />
@@ -282,7 +299,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`h-9 px-3.5 rounded-xl transition shrink-0 flex items-center gap-1.5 active:scale-95 ${
             selectedType === 'poster'
               ? 'bg-purple-600 text-white font-bold shadow-md shadow-purple-500/25'
-              : 'bg-zinc-900 text-zinc-300 border border-zinc-750 hover:bg-zinc-800'
+              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800'
           }`}
         >
           <Images className="w-4 h-4 text-purple-400" />

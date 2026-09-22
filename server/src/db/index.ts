@@ -31,6 +31,7 @@ export function initDatabase() {
       default_template_id TEXT,
       view_mode TEXT DEFAULT 'grid',
       sort_order INTEGER DEFAULT 0,
+      hide_from_all INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -57,6 +58,7 @@ export function initDatabase() {
       is_favorite INTEGER DEFAULT 0,
       is_pinned INTEGER DEFAULT 0,
       is_archived INTEGER DEFAULT 0,
+      hide_from_all INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -86,6 +88,14 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
     CREATE INDEX IF NOT EXISTS idx_counter_history_item ON counter_history(item_id);
   `);
+
+  // Safe schema migrations for existing SQLite databases
+  try {
+    db.exec('ALTER TABLE notebooks ADD COLUMN hide_from_all INTEGER DEFAULT 0;');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE items ADD COLUMN hide_from_all INTEGER DEFAULT 0;');
+  } catch {}
 
   seedInitialData();
 }
