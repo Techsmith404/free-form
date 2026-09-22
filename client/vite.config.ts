@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'Free Form Notes',
         short_name: 'FreeForm',
@@ -15,6 +15,9 @@ export default defineConfig({
         theme_color: '#18181b',
         background_color: '#09090b',
         display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        id: '/',
         orientation: 'portrait-primary',
         icons: [
           {

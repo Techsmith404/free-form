@@ -52,6 +52,7 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileFabMenuOpen, setMobileFabMenuOpen] = useState(false);
 
   // Modal States
   const [noteModal, setNoteModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
@@ -245,7 +246,7 @@ export const App: React.FC = () => {
         />
 
         {/* Views */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-28 sm:pb-8">
           {activeFilter === 'templates' ? (
             <TemplatesView
               templates={templates}
@@ -385,6 +386,104 @@ export const App: React.FC = () => {
             </div>
           )}
         </main>
+      </div>
+
+      {/* Mobile Floating Action Button (FAB) */}
+      <div className="fixed bottom-6 right-5 z-40 lg:hidden flex flex-col items-end gap-2.5">
+        {mobileFabMenuOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+            onClick={() => setMobileFabMenuOpen(false)}
+          />
+        )}
+
+        {mobileFabMenuOpen && (
+          <div className="relative z-40 flex flex-col items-end gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileFabMenuOpen(false);
+                setNoteModal({ open: true, item: null });
+              }}
+              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+            >
+              <span>Markdown Note</span>
+              <FileText className="w-4 h-4 text-brand-400" />
+            </button>
+
+            {templates.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileFabMenuOpen(false);
+                  const boundTpl = templates.find((t) => t.id === activeNotebook?.default_template_id);
+                  setFormRunnerModal({
+                    open: true,
+                    template: boundTpl || templates[0]
+                  });
+                }}
+                className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-brand-500 text-white font-bold text-xs shadow-2xl shadow-brand-500/30 active:scale-95 transition"
+              >
+                <span>Fill Form Note</span>
+                <ClipboardList className="w-4 h-4" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setMobileFabMenuOpen(false);
+                setCounterModal({ open: true, item: null });
+              }}
+              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+            >
+              <span>Counter</span>
+              <Hash className="w-4 h-4 text-emerald-400" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMobileFabMenuOpen(false);
+                setBookmarkModal({ open: true, item: null });
+              }}
+              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+            >
+              <span>Bookmark</span>
+              <Bookmark className="w-4 h-4 text-blue-400" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMobileFabMenuOpen(false);
+                setPosterModal({ open: true, item: null });
+              }}
+              className="flex items-center gap-2.5 h-12 px-4 rounded-full bg-zinc-900 border border-zinc-700 text-white font-bold text-xs shadow-2xl active:scale-95 transition"
+            >
+              <span>Scrapbook</span>
+              <Images className="w-4 h-4 text-purple-400" />
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            if (activeNotebook?.default_template_id) {
+              const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
+              if (tpl) {
+                setFormRunnerModal({ open: true, template: tpl });
+                return;
+              }
+            }
+            setMobileFabMenuOpen(!mobileFabMenuOpen);
+          }}
+          className="relative z-40 h-14 w-14 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center shadow-2xl shadow-brand-500/40 active:scale-90 transition transform"
+          aria-label="New Item"
+        >
+          <Plus className={`w-7 h-7 stroke-[3] transition-transform duration-200 ${mobileFabMenuOpen ? 'rotate-45' : ''}`} />
+        </button>
       </div>
 
       {/* Modals */}

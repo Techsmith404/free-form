@@ -68,58 +68,58 @@ export const PosterCard: React.FC<PosterCardProps> = ({
   };
 
   return (
-    <div className="flex flex-col justify-between rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 transition shadow-lg overflow-hidden group">
+    <div className="flex flex-col justify-between rounded-2xl bg-zinc-900 border border-zinc-750/80 hover:border-purple-500/50 transition-all duration-200 shadow-lg shadow-black/40 ring-1 ring-white/5 overflow-hidden group">
       {/* Header */}
-      <div className="p-4 border-b border-zinc-800/60 flex items-start justify-between">
+      <div className="p-5 border-b border-zinc-800/80 flex items-start justify-between gap-2">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-md flex items-center gap-1">
-              <Images className="w-3 h-3" />
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30 rounded-lg">
+              <Images className="w-3.5 h-3.5" />
               <span>Scrapbook</span>
             </span>
             {item.notebook_name && (
-              <span className="text-xs text-zinc-400">
-                in {item.notebook_name}
+              <span className="text-xs font-medium text-zinc-400 truncate max-w-[140px]">
+                {item.notebook_name}
               </span>
             )}
           </div>
-          <h3 className="font-semibold text-zinc-100 text-base mt-1 line-clamp-1">
+          <h3 className="font-bold text-zinc-100 text-lg sm:text-xl leading-snug">
             {item.title}
           </h3>
           {item.content && (
-            <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{item.content}</p>
+            <p className="text-sm text-zinc-400 mt-1 line-clamp-2">{item.content}</p>
           )}
         </div>
 
-        <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition">
+        <div className="flex items-center gap-1">
           {onEdit && (
             <button
               type="button"
               onClick={() => onEdit(item)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition"
+              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
               title="Edit Poster"
             >
-              <Edit2 className="w-3.5 h-3.5" />
+              <Edit2 className="w-4 h-4" />
             </button>
           )}
           <button
             type="button"
             onClick={() => onDelete(item.id)}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
-            title="Delete / Archive"
+            className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
+            title="Delete"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       {/* Image Gallery Grid */}
-      <div className="p-4 flex-1">
+      <div className="p-5 flex-1">
         {images.length === 0 ? (
-          <div className="border-2 border-dashed border-zinc-800 rounded-xl p-6 text-center text-zinc-500 text-xs">
-            <p className="mb-2">No photos in this scrapbook yet</p>
-            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg cursor-pointer transition">
-              <Plus className="w-3.5 h-3.5" />
+          <div className="border-2 border-dashed border-zinc-800 rounded-2xl p-6 text-center text-zinc-400 text-sm">
+            <p className="mb-3 font-medium">No photos in this scrapbook yet</p>
+            <label className="inline-flex items-center gap-2 h-10 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-xl cursor-pointer text-xs font-bold transition active:scale-95">
+              <Plus className="w-4 h-4" />
               <span>Upload Photos</span>
               <input
                 type="file"
@@ -132,31 +132,31 @@ export const PosterCard: React.FC<PosterCardProps> = ({
             </label>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             {images.slice(0, 4).map((img, idx) => (
               <div
                 key={img.id || idx}
                 onClick={() => setActiveZoomImage(img)}
-                className="group/img relative aspect-square rounded-xl overflow-hidden bg-zinc-950 cursor-pointer border border-zinc-800/80"
+                className="group/img relative aspect-square rounded-xl overflow-hidden bg-zinc-950 cursor-pointer border border-zinc-800 shadow-inner"
               >
                 <img
                   src={img.url}
                   alt={img.name || 'Poster image'}
-                  className="w-full h-full object-cover group-hover/img:scale-105 transition duration-300"
+                  className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300"
                 />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition flex items-center justify-center gap-2">
-                  <ZoomIn className="w-5 h-5 text-white drop-shadow" />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition flex items-center justify-center gap-3">
+                  <ZoomIn className="w-6 h-6 text-white drop-shadow" />
                   <button
                     type="button"
                     onClick={(e) => handleRemoveImage(img.id, e)}
-                    className="p-1 rounded bg-black/60 text-red-400 hover:text-red-300 transition"
+                    className="p-1.5 rounded-lg bg-black/70 text-red-400 hover:text-red-300 transition"
                     title="Remove Photo"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
                 {img.caption && (
-                  <div className="absolute bottom-0 inset-x-0 bg-black/70 text-[10px] text-zinc-200 px-1.5 py-0.5 truncate">
+                  <div className="absolute bottom-0 inset-x-0 bg-black/80 text-xs text-zinc-200 px-2 py-1 truncate">
                     {img.caption}
                   </div>
                 )}
@@ -165,11 +165,11 @@ export const PosterCard: React.FC<PosterCardProps> = ({
           </div>
         )}
 
-        {/* Upload more button if images exist */}
+        {/* Footer */}
         {images.length > 0 && (
-          <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
-            <span>{images.length} {images.length === 1 ? 'photo' : 'photos'}</span>
-            <label className="flex items-center gap-1 text-purple-400 hover:text-purple-300 cursor-pointer transition font-medium">
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
+            <span className="font-medium">{images.length} {images.length === 1 ? 'photo' : 'photos'}</span>
+            <label className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 cursor-pointer font-bold transition active:scale-95">
               <Plus className="w-3.5 h-3.5" />
               <span>Add Photos</span>
               <input
@@ -188,7 +188,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
       {/* Lightbox Modal */}
       {activeZoomImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
           onClick={() => setActiveZoomImage(null)}
         >
           <div
@@ -198,17 +198,17 @@ export const PosterCard: React.FC<PosterCardProps> = ({
             <button
               type="button"
               onClick={() => setActiveZoomImage(null)}
-              className="absolute -top-10 right-0 text-zinc-400 hover:text-white p-1"
+              className="absolute -top-12 right-0 text-zinc-400 hover:text-white p-2"
             >
-              <X className="w-6 h-6" />
+              <X className="w-7 h-7" />
             </button>
             <img
               src={activeZoomImage.url}
               alt={activeZoomImage.name}
-              className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl border border-zinc-800"
+              className="max-w-full max-h-[82vh] rounded-2xl object-contain shadow-2xl border border-zinc-800"
             />
             {activeZoomImage.caption && (
-              <p className="mt-3 text-sm text-zinc-300 text-center max-w-lg">
+              <p className="mt-3 text-sm text-zinc-200 text-center max-w-lg bg-zinc-900/90 px-4 py-2 rounded-xl border border-zinc-800">
                 {activeZoomImage.caption}
               </p>
             )}
