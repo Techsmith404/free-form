@@ -49,6 +49,7 @@ export interface FormFieldDefinition {
   step?: number;
   unit?: string;
   columns?: FormFieldTableColumn[];
+  defaultRows?: number;
   description?: string;
 }
 

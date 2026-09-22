@@ -46,7 +46,8 @@ export interface FormFieldDefinition {
   max?: number;
   step?: number;
   unit?: string;
-  columns?: FormFieldTableColumn[]; // for 'table'
+  columns?: FormFieldTableColumn[];
+  defaultRows?: number;
   description?: string;
 }
 

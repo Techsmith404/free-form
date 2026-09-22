@@ -21,6 +21,7 @@ import {
   Hash,
   Type,
   Calendar,
+  Clock,
   Star,
   ListFilter,
   Heading
@@ -79,6 +80,11 @@ export const TemplateBuilderModal: React.FC<TemplateBuilderModalProps> = ({
         { id: 'col_1', name: 'Item', type: 'text' },
         { id: 'col_2', name: 'Status', type: 'checkbox' }
       ];
+      newField.defaultRows = 3;
+    } else if (type === 'time') {
+      newField.label = 'Time';
+    } else if (type === 'date') {
+      newField.label = 'Date';
     }
 
     setFields([...fields, newField]);
@@ -523,6 +529,20 @@ export const TemplateBuilderModal: React.FC<TemplateBuilderModalProps> = ({
                         </div>
                       ))}
                     </div>
+
+                    <div className="flex items-center gap-2.5 pt-2.5 mt-2 border-t border-zinc-800">
+                      <label className="text-zinc-300 font-semibold text-xs">Default Number of Rows:</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={field.defaultRows ?? ''}
+                        placeholder="e.g. 3"
+                        onChange={(e) => handleUpdateField(index, { defaultRows: parseInt(e.target.value) || 0 })}
+                        className="w-20 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 font-mono"
+                      />
+                      <span className="text-[11px] text-zinc-400">Rows pre-filled on new entry</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -604,6 +624,14 @@ export const TemplateBuilderModal: React.FC<TemplateBuilderModalProps> = ({
               >
                 <Calendar className="w-3.5 h-3.5 text-pink-400" />
                 <span>Date</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddField('time')}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium transition"
+              >
+                <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Time</span>
               </button>
               <button
                 type="button"

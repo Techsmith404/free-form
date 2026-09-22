@@ -1,9 +1,26 @@
-import React from 'react';
-import { Item, FormEntryMetadata } from '../../types/index.js';
-import { ClipboardList, Star, Pin, Trash2, Edit2, PenTool, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Item, FormEntryMetadata, FormTemplate, FormFieldDefinition } from '../../types/index.js';
+import {
+  ClipboardList,
+  Star,
+  Pin,
+  Trash2,
+  Edit2,
+  PenTool,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle,
+  Calendar,
+  Clock,
+  Table as TableIcon
+} from 'lucide-react';
 
 interface FormEntryCardProps {
   item: Item;
+  template?: FormTemplate | null;
+  isExpanded?: boolean;
   onOpenForm: (item: Item) => void;
   onOpenMarkdown: (item: Item) => void;
   onToggleFavorite: (item: Item) => void;
@@ -13,6 +30,8 @@ interface FormEntryCardProps {
 
 export const FormEntryCard: React.FC<FormEntryCardProps> = ({
   item,
+  template,
+  isExpanded = false,
   onOpenForm,
   onOpenMarkdown,
   onToggleFavorite,
@@ -22,6 +41,19 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
   const meta: FormEntryMetadata = item.metadata || { template_id: '', template_name: 'Form Entry', values: {} };
   const values = meta.values || {};
 
+  // Local card expand override: null means inherit from parent isExpanded
+  const [localExpanded, setLocalExpanded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Reset local override when global isExpanded changes
+    setLocalExpanded(null);
+  }, [isExpanded]);
+
+  const expanded = localExpanded !== null ? localExpanded : isExpanded;
+
+  // Schema fields to render
+  const fields: FormFieldDefinition[] = template?.fields_schema || [];
+
   const hasSignature = Object.values(values).some(
     (v) => typeof v === 'string' && (v.startsWith('/uploads/') || v.startsWith('data:image'))
   );
@@ -29,10 +61,10 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
   return (
     <div
       onClick={() => onOpenForm(item)}
-      className="flex flex-col justify-between p-5 rounded-2xl bg-zinc-900 border border-zinc-750/80 hover:border-brand-500/60 transition-all duration-200 shadow-lg shadow-black/40 ring-1 ring-white/5 cursor-pointer group active:scale-[0.99]"
+      className="flex flex-col justify-between p-5 rounded-2xl bg-zinc-900 border border-zinc-750 hover:border-brand-500/60 transition-all duration-200 shadow-lg shadow-black/40 ring-1 ring-white/5 cursor-pointer group active:scale-[0.99]"
     >
       <div>
-        {/* Card Header */}
+        {/* Card Header Bar */}
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2 truncate">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-brand-500/15 text-brand-400 border border-brand-500/30 rounded-lg">
@@ -40,7 +72,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
               <span>{meta.template_name || 'Form'}</span>
             </span>
             {item.notebook_name && (
-              <span className="text-xs font-medium text-zinc-400 truncate max-w-[140px]">
+              <span className="text-xs font-medium text-zinc-400 truncate max-w-[130px]">
                 {item.notebook_name}
               </span>
             )}
@@ -50,6 +82,16 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
             className="flex items-center gap-1"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Toggle Single Card Expand */}
+            <button
+              type="button"
+              onClick={() => setLocalExpanded(!expanded)}
+              className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+              title={expanded ? 'Collapse details' : 'Show full details'}
+            >
+              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+
             <button
               type="button"
               onClick={() => onToggleFavorite(item)}
@@ -90,31 +132,187 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
           {item.title}
         </h3>
 
-        {/* Badges / Pill Summary */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        {/* Badges Bar */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
           {hasSignature && (
-            <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
-              <PenTool className="w-3.5 h-3.5" />
+            <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
+              <PenTool className="w-3 h-3" />
               <span>Signed</span>
             </span>
           )}
 
           {Object.keys(values).length > 0 && (
-            <span className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700/60 text-zinc-300 font-medium">
-              {Object.keys(values).length} fields filled
+            <span className="text-xs px-2.5 py-0.5 rounded-md bg-zinc-800 border border-zinc-750 text-zinc-300 font-medium">
+              {Object.keys(values).length} fields
             </span>
           )}
         </div>
+
+        {/* Detailed Form Elements Container */}
+        {expanded ? (
+          <div className="mt-4 pt-3.5 border-t border-zinc-800/80 space-y-3.5 text-xs sm:text-sm">
+            {fields.length > 0 ? (
+              fields.map((field) => {
+                const val = values[field.id];
+
+                if (field.type === 'header') {
+                  return (
+                    <div key={field.id} className="pt-2 border-t border-zinc-800/60 first:border-0 first:pt-0">
+                      <span className="font-bold text-zinc-200 text-xs tracking-wide uppercase">
+                        {field.label}
+                      </span>
+                    </div>
+                  );
+                }
+
+                if (val === undefined || val === null || val === '') return null;
+
+                if (field.type === 'rating') {
+                  const num = Number(val) || 0;
+                  return (
+                    <div key={field.id} className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">{field.label}:</span>
+                      <div className="flex items-center gap-1 text-amber-400">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={`w-3.5 h-3.5 ${s <= num ? 'fill-amber-400' : 'text-zinc-700'}`}
+                          />
+                        ))}
+                        <span className="ml-1 text-xs font-bold text-zinc-300">({num}/5)</span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (field.type === 'checkbox') {
+                  return (
+                    <div key={field.id} className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                      <span className="text-zinc-300 font-medium">{field.label}</span>
+                      {val ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-400 font-bold">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Yes</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+                          <XCircle className="w-4 h-4" />
+                          <span>No</span>
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (field.type === 'signature') {
+                  return (
+                    <div key={field.id} className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                      <span className="text-xs text-zinc-400 font-medium block mb-1.5">{field.label}:</span>
+                      {typeof val === 'string' && (val.startsWith('/uploads/') || val.startsWith('data:image')) ? (
+                        <div className="h-20 max-w-[200px] rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950 flex items-center justify-center p-1">
+                          <img src={val} alt="Signature" className="max-h-full object-contain filter drop-shadow" />
+                        </div>
+                      ) : (
+                        <span className="font-mono text-xs text-brand-400">Signed: {String(val)}</span>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (field.type === 'table') {
+                  const rows = Array.isArray(val) ? val : [];
+                  const columns = field.columns || [];
+                  return (
+                    <div key={field.id} className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between text-xs text-zinc-400 font-medium">
+                        <span className="flex items-center gap-1.5">
+                          <TableIcon className="w-3.5 h-3.5 text-teal-400" />
+                          <span>{field.label}</span>
+                        </span>
+                        <span>{rows.length} {rows.length === 1 ? 'row' : 'rows'}</span>
+                      </div>
+
+                      {rows.length > 0 && columns.length > 0 && (
+                        <div className="border border-zinc-800 rounded-xl overflow-x-auto bg-zinc-950/80 text-xs">
+                          <table className="w-full text-left">
+                            <thead className="bg-zinc-900/90 text-zinc-400 border-b border-zinc-800">
+                              <tr>
+                                {columns.map((c) => (
+                                  <th key={c.id} className="py-1.5 px-2.5 font-semibold">
+                                    {c.name}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800/60">
+                              {rows.map((row, rIdx) => (
+                                <tr key={rIdx}>
+                                  {columns.map((c) => (
+                                    <td key={c.id} className="py-1.5 px-2.5 text-zinc-200">
+                                      {c.type === 'checkbox' ? (row[c.id] ? '✓' : '✗') : String(row[c.id] ?? '')}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={field.id} className="flex items-baseline justify-between gap-3 py-1 border-b border-zinc-800/50">
+                    <span className="text-zinc-400 text-xs font-medium shrink-0">{field.label}:</span>
+                    <span className="text-zinc-100 font-semibold text-right break-words">
+                      {String(val)}{field.unit ? ` ${field.unit}` : ''}
+                    </span>
+                  </div>
+                );
+              })
+            ) : (
+              // Fallback if template is not loaded yet
+              Object.entries(values).map(([k, v]) => (
+                <div key={k} className="flex items-baseline justify-between gap-3 py-1 border-b border-zinc-800/50">
+                  <span className="text-zinc-400 text-xs font-medium shrink-0">{k}:</span>
+                  <span className="text-zinc-100 font-semibold text-right">{String(v)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          // Collapsed preview: show snippet of top fields
+          <div className="mt-3 text-xs text-zinc-400 space-y-1">
+            {Object.entries(values).slice(0, 2).map(([k, v]) => {
+              if (typeof v === 'object') return null;
+              const fieldDef = fields.find((f) => f.id === k);
+              const label = fieldDef?.label || k;
+              return (
+                <div key={k} className="flex items-center gap-2 truncate">
+                  <span className="text-zinc-500">•</span>
+                  <span className="font-medium text-zinc-400">{label}:</span>
+                  <span className="text-zinc-200 font-medium truncate">{String(v)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Footer Actions (Touch Friendly!) */}
+      {/* Card Footer */}
       <div
         className="mt-5 pt-3.5 border-t border-zinc-800/90 flex items-center justify-between gap-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-xs text-zinc-400 font-medium">
-          {new Date(item.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-        </span>
+        <button
+          type="button"
+          onClick={() => setLocalExpanded(!expanded)}
+          className="text-xs text-zinc-400 hover:text-zinc-200 font-semibold flex items-center gap-1 py-1"
+        >
+          <span>{expanded ? 'Less Details' : 'Show Details'}</span>
+          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
 
         <div className="flex items-center gap-2">
           <button

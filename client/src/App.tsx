@@ -51,6 +51,7 @@ export const App: React.FC = () => {
   const [selectedType, setSelectedType] = useState<ItemType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [expandAllCards, setExpandAllCards] = useState<boolean>(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileFabMenuOpen, setMobileFabMenuOpen] = useState(false);
 
@@ -93,6 +94,11 @@ export const App: React.FC = () => {
   const activeNotebook = useMemo(() => {
     return notebooks.find((n) => n.id === activeNotebookId) || null;
   }, [notebooks, activeNotebookId]);
+
+  // If viewing a notebook linked to a form template, expand all cards by default
+  useEffect(() => {
+    setExpandAllCards(Boolean(activeNotebook?.default_template_id));
+  }, [activeNotebookId, activeNotebook?.default_template_id]);
 
   // Filtered Items
   const filteredItems = useMemo(() => {
@@ -241,6 +247,8 @@ export const App: React.FC = () => {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           activeNotebook={activeNotebook}
+          isExpandedAll={expandAllCards}
+          onToggleExpandAll={() => setExpandAllCards((prev) => !prev)}
           onQuickAdd={handleQuickAdd}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         />
@@ -355,6 +363,8 @@ export const App: React.FC = () => {
                           <FormEntryCard
                             key={item.id}
                             item={item}
+                            template={templates.find((t) => t.id === item.metadata?.template_id)}
+                            isExpanded={expandAllCards}
                             onOpenForm={(it) => {
                               const tpl = templates.find((t) => t.id === it.metadata?.template_id);
                               if (tpl) {

@@ -53,11 +53,35 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
   useEffect(() => {
     if (!existingItem) {
       const defaults: Record<string, any> = {};
+      const now = new Date();
+      // Format local YYYY-MM-DD
+      const localDate = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0')
+      ].join('-');
+      // Format local HH:MM
+      const localTime = [
+        String(now.getHours()).padStart(2, '0'),
+        String(now.getMinutes()).padStart(2, '0')
+      ].join(':');
+
       template.fields_schema.forEach((field) => {
         if (field.defaultValue !== undefined) {
           defaults[field.id] = field.defaultValue;
+        } else if (field.type === 'date') {
+          defaults[field.id] = localDate;
+        } else if (field.type === 'time') {
+          defaults[field.id] = localTime;
         } else if (field.type === 'table') {
-          defaults[field.id] = [];
+          const rowCount = field.defaultRows && field.defaultRows > 0 ? field.defaultRows : 0;
+          defaults[field.id] = Array.from({ length: rowCount }, () => {
+            const row: Record<string, any> = {};
+            (field.columns || []).forEach((col) => {
+              row[col.id] = col.type === 'checkbox' ? false : '';
+            });
+            return row;
+          });
         } else if (field.type === 'checkbox') {
           defaults[field.id] = false;
         }

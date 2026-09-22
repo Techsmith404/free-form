@@ -12,7 +12,8 @@ import {
   ClipboardList,
   Sparkles,
   Plus,
-  X
+  X,
+  ChevronsUpDown
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -25,6 +26,8 @@ interface NavbarProps {
   activeNotebook: Notebook | null;
   onQuickAdd: () => void;
   onOpenMobileSidebar: () => void;
+  isExpandedAll?: boolean;
+  onToggleExpandAll?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -36,7 +39,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onViewModeChange,
   activeNotebook,
   onQuickAdd,
-  onOpenMobileSidebar
+  onOpenMobileSidebar,
+  isExpandedAll,
+  onToggleExpandAll
 }) => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
@@ -131,6 +136,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>{activeNotebook.default_template_name ? 'New Entry' : 'Add Note'}</span>
+            </button>
+          )}
+
+          {/* Expand All / Collapse All Toggle */}
+          {onToggleExpandAll && (
+            <button
+              type="button"
+              onClick={onToggleExpandAll}
+              className={`h-11 px-3 flex items-center gap-1.5 rounded-xl border text-xs font-bold transition active:scale-95 ${
+                isExpandedAll
+                  ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                  : 'bg-zinc-900 text-zinc-300 border-zinc-750 hover:text-white'
+              }`}
+              title={isExpandedAll ? 'Collapse all card details' : 'Expand all card details'}
+            >
+              <ChevronsUpDown className="w-4 h-4" />
+              <span className="hidden sm:inline">{isExpandedAll ? 'Collapse All' : 'Expand All'}</span>
             </button>
           )}
 

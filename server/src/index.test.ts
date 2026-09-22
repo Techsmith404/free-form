@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import { nanoid } from 'nanoid';
 import { db, initDatabase } from './db/index.js';
 import { generateMarkdownFromForm } from './services/markdown.js';
 import { FormTemplate } from './types/index.js';
@@ -77,7 +78,7 @@ describe('Free Form Backend Core', () => {
     db.prepare(`
       INSERT INTO counter_history (id, item_id, delta, new_value, note, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run('test-ch-1', item.id, 1, newCount, 'Test increment', new Date().toISOString());
+    `).run(nanoid(), item.id, 1, newCount, 'Test increment', new Date().toISOString());
 
     const history = db.prepare('SELECT * FROM counter_history WHERE item_id = ?').all(item.id);
     expect(history.length).toBeGreaterThan(0);
