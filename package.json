@@ -14,7 +14,9 @@
     "build:client": "npm run build --workspace=client",
     "build": "npm run build --workspace=client && npm run build --workspace=server",
     "start": "node server/dist/index.js",
-    "test": "npm run test --workspace=server"
+    "test": "npm run test --workspace=server",
+    "docker:test": "./scripts/test-local.sh",
+    "docker:down": "docker compose down"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
