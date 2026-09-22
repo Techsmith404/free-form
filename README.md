@@ -56,9 +56,11 @@ Most note apps force you into one of two extremes:
    cd free-form
    ```
 
-2. Start the container:
+2. Build & run the container test suite:
    ```bash
-   docker compose up -d
+   ./scripts/test-local.sh
+   # or
+   npm run docker:test
    ```
 
 3. Open **`http://localhost:3000`** in your browser!
