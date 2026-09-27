@@ -47,6 +47,7 @@ Most note apps force you into one of two extremes:
 
 ### 4. 📱 Native Mobile PWA & Android APK Polish
 * **Live Android Chronometer Countdown Notifications**: Running timers display an active, persistent notification in the Android notification shade and lock screen with a native live ticking countdown chronometer (powered by `NativeTimerPlugin`), seamlessly transitioning to a high-priority heads-up alarm when completed.
+* **Direct Android Clock App Integration**: Push any timer straight into your phone's native Clock app (Samsung Clock / Google Clock) using `AlarmClock.ACTION_SET_TIMER` with a single tap.
 * **Zero Status Bar Overlap**: Native status bar overlay is disabled (`overlay: false`) and coupled with dynamic CSS safe-area padding (`env(safe-area-inset-top)`), guaranteeing the Android clock, battery, and notification bar never overlap navbar icons or titles.
 * **Live Top Bar Countdown Ticker**: Active timers update second-by-second directly inside the top navbar pill without needing to open the timers modal.
 * **Refined Tactile Haptics**: Subtle, ultra-light mechanical tick on button and tab taps (`selectionChanged`), gentle bump on counter tallies (`ImpactStyle.Light`), and firm pulses on deletions and alarms.

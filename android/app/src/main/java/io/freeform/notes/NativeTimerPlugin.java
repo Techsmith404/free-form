@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
+import android.provider.AlarmClock;
 import androidx.core.app.NotificationCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -33,11 +34,11 @@ public class NativeTimerPlugin extends Plugin {
             NotificationManager nm = getNotificationManager();
             if (nm == null) return;
 
-            // 1. Ongoing countdown channel (Low importance: silent, no heads-up popup sound, live chronometer)
+            // 1. Ongoing countdown channel (Default importance: visible in shade & lock screen, silent, live chronometer)
             NotificationChannel countdownChannel = new NotificationChannel(
                 COUNTDOWN_CHANNEL_ID,
                 "Active Timer Countdowns",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             );
             countdownChannel.setDescription("Live countdown timer in notification shade and lock screen");
             countdownChannel.setShowBadge(false);
@@ -67,20 +68,36 @@ public class NativeTimerPlugin extends Plugin {
         return ONGOING_NOTIFICATION_BASE_ID + Math.abs(hash % 10000);
     }
 
+    private long getLongValue(PluginCall call, String key) {
+        if (call.getData() != null && call.getData().has(key)) {
+            try {
+                return call.getData().getLong(key);
+            } catch (Exception e1) {
+                try {
+                    return (long) call.getData().getDouble(key);
+                } catch (Exception e2) {
+                    try {
+                        return Long.parseLong(call.getData().getString(key));
+                    } catch (Exception e3) {}
+                }
+            }
+        }
+        return 0L;
+    }
+
     @PluginMethod
     public void startCountdownNotification(PluginCall call) {
         createNotificationChannels();
 
         String timerId = call.getString("timerId", "default");
         String title = call.getString("title", "Timer");
-        Double targetEndTimeDouble = call.getDouble("targetEndTime");
+        long targetEndTimeMillis = getLongValue(call, "targetEndTime");
 
-        if (targetEndTimeDouble == null) {
-            call.reject("targetEndTime is required");
+        if (targetEndTimeMillis <= 0) {
+            call.reject("Valid targetEndTime is required");
             return;
         }
 
-        long targetEndTimeMillis = targetEndTimeDouble.longValue();
         Context context = getContext();
         NotificationManager nm = getNotificationManager();
         if (nm == null || context == null) {
@@ -103,15 +120,16 @@ public class NativeTimerPlugin extends Plugin {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, COUNTDOWN_CHANNEL_ID)
             .setSmallIcon(smallIcon)
             .setContentTitle("⏳ " + (title == null || title.trim().isEmpty() ? "Timer" : title))
-            .setContentText("Running...")
+            .setContentText("Timer running")
             .setContentIntent(pendingIntent)
+            .setShowWhen(true)
             .setWhen(targetEndTimeMillis)
             .setUsesChronometer(true)
             .setChronometerCountDown(true)
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
 
@@ -140,7 +158,6 @@ public class NativeTimerPlugin extends Plugin {
     public void cancelAllCountdowns(PluginCall call) {
         NotificationManager nm = getNotificationManager();
         if (nm != null) {
-            // Cancel any IDs in our ongoing range
             for (int i = 0; i < 10000; i++) {
                 nm.cancel(ONGOING_NOTIFICATION_BASE_ID + i);
             }
@@ -148,5 +165,32 @@ public class NativeTimerPlugin extends Plugin {
         JSObject res = new JSObject();
         res.put("success", true);
         call.resolve(res);
+    }
+
+    @PluginMethod
+    public void setSystemClockTimer(PluginCall call) {
+        int lengthSeconds = call.getInt("lengthSeconds", 60);
+        String title = call.getString("title", "Free Form Timer");
+        boolean skipUi = call.getBoolean("skipUi", false);
+
+        try {
+            Intent intent = new Intent(AlarmClock.ACTION_SET_TIMER);
+            intent.putExtra(AlarmClock.EXTRA_LENGTH, lengthSeconds);
+            intent.putExtra(AlarmClock.EXTRA_MESSAGE, title);
+            intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            Context context = getContext();
+            if (context != null) {
+                context.startActivity(intent);
+                JSObject res = new JSObject();
+                res.put("success", true);
+                call.resolve(res);
+            } else {
+                call.reject("Context is null");
+            }
+        } catch (Exception err) {
+            call.reject("Failed to set system timer in Clock app: " + err.getMessage());
+        }
     }
 }

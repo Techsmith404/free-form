@@ -448,9 +448,13 @@ The inner screen of foldables like the Z Fold 6 is ~360px wide — between `sm` 
   * `hapticHeavy()`: Utilizes `Haptics.impact({ style: ImpactStyle.Medium })` (30ms fallback) for destructive deletions and archive actions.
   * `hapticSuccess()` / `hapticWarning()`: Multi-pulse patterns for form runner completion and ringing timer/reminder alarms.
 * **Native Live Chronometer Countdown Notifications (`NativeTimerPlugin.java`):**
-  * Implemented a custom Android Capacitor plugin (`NativeTimer`) leveraging Android's native `NotificationCompat.Builder.setUsesChronometer(true)` and `setChronometerCountDown(true)` with `setWhen(targetEndTimeMillis)` on a silent ongoing channel (`timer_countdown_channel`).
-  * As soon as a timer starts, Android SystemUI renders a live, second-by-second countdown in the notification shade and lock screen (e.g. `04:59`, `04:58`...) without draining battery or needing JavaScript wakeup loops.
-  * When the timer expires, the ongoing chronometer notification is cleanly dismissed, and the high-priority alarm channel (`timer_alarms`) triggers the completion alert with sound and vibration.
+  * Implemented custom Android Capacitor plugin (`NativeTimer`) leveraging Android's native `NotificationCompat.Builder.setUsesChronometer(true)` and `setChronometerCountDown(true)` with `setShowWhen(true)` and `setWhen(targetEndTimeMillis)` on `NotificationManager.IMPORTANCE_DEFAULT` (`timer_countdown_channel`, silent, vibration disabled).
+  * Robust numerical type parsing (`optLong` / `optDouble` / `optString`) prevents JSON type-casting failures in Capacitor bridge.
+  * As soon as a timer starts, Android SystemUI renders a persistent, second-by-second live ticking countdown in the notification shade and lock screen without draining battery or needing background JS loops.
+  * When the timer finishes, the ongoing chronometer notification is cleanly dismissed, and the high-priority alarm channel (`timer_alarms`) triggers the completion alert with heads-up banner, sound, and vibration.
+* **Direct Android System Clock App Integration (`AlarmClock.ACTION_SET_TIMER`):**
+  * Added `setNativeSystemClockTimer()` utilizing Android's official system intent `AlarmClock.ACTION_SET_TIMER` with `<uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>`.
+  * Users can launch and register timers directly inside their phone's native Clock app (Samsung Clock / Google Clock) alongside Free Form's synchronized in-app and notification timers with a single tap.
 
 ### 6. Mobile Navbar & Safe Area Insets
 * **Status Bar Non-Overlap:** Explicitly configures `StatusBar.setOverlaysWebView({ overlay: false })` in Capacitor alongside CSS environment safe areas: `pt-[max(env(safe-area-inset-top),0.625rem)]` on `<Navbar>` and `pt-[max(env(safe-area-inset-top),1rem)]` on `<Sidebar>` brand header. This prevents the Android/iOS status bar (clock, battery, Wi-Fi) from overlapping buttons or navigation controls.

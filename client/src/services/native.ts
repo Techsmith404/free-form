@@ -10,9 +10,29 @@ export interface NativeTimerPluginInterface {
   startCountdownNotification(options: { timerId: string; title: string; targetEndTime: number }): Promise<{ success: boolean; notificationId: number }>;
   cancelCountdownNotification(options: { timerId: string }): Promise<{ success: boolean }>;
   cancelAllCountdowns(): Promise<{ success: boolean }>;
+  setSystemClockTimer(options: { lengthSeconds: number; title: string; skipUi?: boolean }): Promise<{ success: boolean }>;
 }
 
 export const NativeTimer = registerPlugin<NativeTimerPluginInterface>('NativeTimer');
+
+/**
+ * Dispatch an actual timer directly into Android's native Clock app (Samsung Clock / Google Clock)
+ */
+export async function setNativeSystemClockTimer(lengthSeconds: number, title: string): Promise<boolean> {
+  if (!isNative) return false;
+  try {
+    const res = await NativeTimer.setSystemClockTimer({
+      lengthSeconds,
+      title: title || 'Free Form Timer',
+      skipUi: false
+    });
+    return res.success;
+  } catch (err) {
+    console.warn('Failed to set native system clock timer', err);
+    return false;
+  }
+}
+
 
 /**
  * Initialize native device features (Status bar, splash screen, notification channel)
