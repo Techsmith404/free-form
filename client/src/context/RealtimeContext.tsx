@@ -3,6 +3,13 @@ import { Timer, Reminder, RealtimeEvent, ConflictRecord } from '../types/index.j
 import * as api from '../api/index.js';
 import { startAlarmChime, stopAlarmChime } from '../services/audio.js';
 import { syncService } from '../services/syncService.js';
+import {
+  scheduleNativeTimerAlarm,
+  cancelNativeTimerAlarm,
+  scheduleNativeReminderAlarm,
+  cancelNativeReminderAlarm,
+  hapticWarning
+} from '../services/native.js';
 
 interface RealtimeContextValue {
   timers: Timer[];
@@ -55,10 +62,11 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const ringingTimer = timers.find((t) => t.status === 'ringing') || null;
   const triggeredReminder = reminders.find((r) => r.status === 'triggered') || null;
 
-  // Handle Alarm Audio: play when anything is ringing/triggered, stop when all are clear
+  // Handle Alarm Audio & Haptics: play when anything is ringing/triggered, stop when all are clear
   useEffect(() => {
     if (ringingTimer || triggeredReminder) {
       startAlarmChime();
+      hapticWarning();
 
       // Show browser system notification if permitted
       if ('Notification' in window && Notification.permission === 'granted') {
@@ -75,6 +83,58 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       stopAlarmChime();
     }
   }, [ringingTimer, triggeredReminder]);
+
+  // Synchronize OS-level native alarms whenever timers change
+  useEffect(() => {
+    timers.forEach((timer) => {
+      if (timer.status === 'running' && timer.target_end_time) {
+        scheduleNativeTimerAlarm(timer.id, timer.title, new Date(timer.target_end_time));
+      } else {
+        cancelNativeTimerAlarm(timer.id);
+      }
+    });
+  }, [timers]);
+
+  // Synchronize OS-level native alarms whenever reminders change
+  useEffect(() => {
+    reminders.forEach((reminder) => {
+      if (reminder.status === 'pending' && reminder.due_date) {
+        scheduleNativeReminderAlarm(reminder.id, reminder.title, new Date(reminder.due_date), reminder.notes);
+      } else {
+        cancelNativeReminderAlarm(reminder.id);
+      }
+    });
+  }, [reminders]);
+
+  // Local fallback ticker for offline / foreground timer expiration
+  useEffect(() => {
+    const runningTimers = timers.filter((t) => t.status === 'running' && t.target_end_time);
+    if (runningTimers.length === 0) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      let hasRinging = false;
+      timers.forEach((timer) => {
+        if (timer.status === 'running' && timer.target_end_time) {
+          if (new Date(timer.target_end_time).getTime() <= now) {
+            hasRinging = true;
+          }
+        }
+      });
+
+      if (hasRinging) {
+        setTimers((prev) =>
+          prev.map((t) =>
+            t.status === 'running' && t.target_end_time && new Date(t.target_end_time).getTime() <= now
+              ? { ...t, status: 'ringing', remaining_seconds: 0 }
+              : t
+          )
+        );
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timers]);
 
   // Request browser notification permission once on initial load
   useEffect(() => {

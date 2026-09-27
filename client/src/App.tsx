@@ -46,6 +46,7 @@ import { ConfirmModal } from './components/modals/ConfirmModal.js';
 import { SettingsModal } from './components/modals/SettingsModal.js';
 import { ConflictResolverModal } from './components/modals/ConflictResolverModal.js';
 import { useRealtime } from './context/RealtimeContext.js';
+import { hapticTap, hapticMedium, hapticSuccess } from './services/native.js';
 
 import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers, Clock } from 'lucide-react';
 
@@ -783,6 +784,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              hapticTap();
               setActiveNotebookId(null);
               setActiveFilter('all');
             }}
@@ -802,7 +804,10 @@ export const App: React.FC = () => {
           {/* Tab 2: Notebooks */}
           <button
             type="button"
-            onClick={() => setMobileSidebarOpen(true)}
+            onClick={() => {
+              hapticTap();
+              setMobileSidebarOpen(true);
+            }}
             className={`relative flex flex-col items-center justify-center gap-0.5 py-2 px-4 rounded-2xl transition-all duration-200 touch-manipulation min-w-[52px] ${
               activeNotebookId !== null
                 ? 'text-brand-400'
@@ -821,6 +826,7 @@ export const App: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                hapticMedium();
                 if (activeNotebook?.default_template_id) {
                   const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
                   if (tpl) {
@@ -845,6 +851,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              hapticTap();
               setActiveNotebookId(null);
               setActiveFilter('templates');
             }}
@@ -865,6 +872,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              hapticTap();
               setActiveNotebookId(null);
               setActiveFilter('favorites');
             }}
@@ -914,6 +922,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  hapticTap();
                   setMobileFabMenuOpen(false);
                   setNoteModal({ open: true, item: null });
                 }}
@@ -932,6 +941,7 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
+                    hapticTap();
                     setMobileFabMenuOpen(false);
                     const boundTpl = templates.find((t) => t.id === activeNotebook?.default_template_id);
                     setFormRunnerModal({
@@ -954,6 +964,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  hapticTap();
                   setMobileFabMenuOpen(false);
                   setCounterModal({ open: true, item: null });
                 }}
@@ -971,6 +982,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  hapticTap();
                   setMobileFabMenuOpen(false);
                   setBookmarkModal({ open: true, item: null });
                 }}
@@ -988,6 +1000,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  hapticTap();
                   setMobileFabMenuOpen(false);
                   setPosterModal({ open: true, item: null });
                 }}
@@ -1005,6 +1018,7 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  hapticTap();
                   setMobileFabMenuOpen(false);
                   setTimersModalOpen(true);
                 }}

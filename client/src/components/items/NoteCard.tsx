@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Item, Tag, NotePriority } from '../../types/index.js';
 import { marked } from 'marked';
 import { FileText, Star, Pin, Trash2, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { hapticTap } from '../../services/native.js';
 
 interface NoteCardProps {
   item: Item;
@@ -96,7 +97,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             {/* Toggle Single Card Expand */}
             <button
               type="button"
-              onClick={() => setLocalExpanded(!expanded)}
+              onClick={() => {
+                hapticTap();
+                setLocalExpanded(!expanded);
+              }}
               className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
               title={expanded ? 'Collapse preview' : 'Show full note'}
             >
@@ -105,7 +109,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 
             <button
               type="button"
-              onClick={() => onToggleFavorite(item)}
+              onClick={() => {
+                hapticTap();
+                onToggleFavorite(item);
+              }}
               className={`h-10 w-10 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 item.is_favorite
                   ? 'text-amber-400 bg-amber-400/10'
@@ -117,7 +124,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onTogglePin(item)}
+              onClick={() => {
+                hapticTap();
+                onTogglePin(item);
+              }}
               className={`h-10 w-10 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 item.is_pinned
                   ? 'text-brand-400 bg-brand-400/10'
@@ -129,7 +139,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onDelete(item.id)}
+              onClick={() => {
+                hapticTap();
+                onDelete(item.id);
+              }}
               className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
               title="Delete"
             >

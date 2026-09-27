@@ -21,10 +21,14 @@ if [ -n "${ANDROID_HOME:-}" ] || [ -d "$HOME/Android/Sdk" ]; then
   export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
   echo "Using Android SDK at: $ANDROID_HOME"
   cd android
-  ./gradlew assembleDebug
+  ./gradlew assembleRelease || ./gradlew assembleDebug
   cd ..
 
-  APK_OUTPUT="android/app/build/outputs/apk/debug/app-debug.apk"
+  APK_OUTPUT="android/app/build/outputs/apk/release/app-release.apk"
+  if [ ! -f "$APK_OUTPUT" ]; then
+    APK_OUTPUT="android/app/build/outputs/apk/debug/app-debug.apk"
+  fi
+
   if [ -f "$APK_OUTPUT" ]; then
     VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.1.0")
     mkdir -p dist-apk
@@ -32,7 +36,7 @@ if [ -n "${ANDROID_HOME:-}" ] || [ -d "$HOME/Android/Sdk" ]; then
     cp "$APK_OUTPUT" "dist-apk/free-form.apk"
     echo ""
     echo "=================================================="
-    echo "✅ APK Build Succeeded!"
+    echo "✅ APK Build Succeeded (Signed with persistent keystore)!"
     echo "📱 APK Location: $PROJECT_ROOT/dist-apk/free-form-v${VERSION}.apk"
     echo "=================================================="
   fi

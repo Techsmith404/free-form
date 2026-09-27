@@ -3,6 +3,7 @@ import { Notebook, Item, NotePriority } from '../../types/index.js';
 import { createItem, updateItem } from '../../api/index.js';
 import { TipTapEditor } from '../editor/TipTapEditor.js';
 import { X, Save, Folder, Star, Pin, Tag as TagIcon, FileText, EyeOff, AlertCircle } from 'lucide-react';
+import { hapticSuccess, hapticTap } from '../../services/native.js';
 
 interface NoteEditorModalProps {
   existingNote?: Item | null;
@@ -66,6 +67,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
         saved = await createItem(payload);
       }
 
+      hapticSuccess();
       onSaved(saved);
       onClose();
     } catch (err: any) {

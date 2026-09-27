@@ -3,6 +3,7 @@ import { Item, CounterMetadata, CounterHistoryEntry } from '../../types/index.js
 import { counterAction, fetchCounterHistory } from '../../api/index.js';
 import { Plus, Minus, RotateCcw, History, Trash2, Edit2, Hash, EyeOff } from 'lucide-react';
 import { ConfirmModal } from '../modals/ConfirmModal.js';
+import { hapticMedium, hapticTap } from '../../services/native.js';
 
 interface CounterCardProps {
   item: Item;
@@ -25,6 +26,7 @@ export const CounterCard: React.FC<CounterCardProps> = ({
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleAdjust = async (delta: number) => {
+    hapticMedium();
     try {
       setLoading(true);
       const res = await counterAction(item.id, { delta });
@@ -40,10 +42,12 @@ export const CounterCard: React.FC<CounterCardProps> = ({
   };
 
   const handleResetClick = () => {
+    hapticTap();
     setShowResetConfirm(true);
   };
 
   const handlePerformReset = async () => {
+    hapticTap();
     try {
       setLoading(true);
       const res = await counterAction(item.id, { reset: true });

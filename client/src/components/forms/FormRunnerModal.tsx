@@ -17,6 +17,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { marked } from 'marked';
+import { hapticTap, hapticSuccess } from '../../services/native.js';
 
 interface FormRunnerModalProps {
   template: FormTemplate;
@@ -152,6 +153,7 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
         saved = await createItem(payload);
       }
 
+      hapticSuccess();
       onSaved(saved);
       onClose();
     } catch (err: any) {

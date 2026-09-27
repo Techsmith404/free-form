@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Item, PosterMetadata, PosterImage } from '../../types/index.js';
 import { uploadFile } from '../../api/index.js';
 import { Images, Plus, Trash2, Edit2, X, ZoomIn, EyeOff } from 'lucide-react';
+import { hapticTap, hapticSuccess } from '../../services/native.js';
 
 interface PosterCardProps {
   item: Item;
@@ -39,6 +40,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
         });
       }
 
+      hapticSuccess();
       onUpdate({
         ...item,
         metadata: {
@@ -57,6 +59,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
 
   const handleRemoveImage = (imgId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    hapticTap();
     const updatedImages = images.filter((img) => img.id !== imgId);
     onUpdate({
       ...item,
@@ -104,8 +107,11 @@ export const PosterCard: React.FC<PosterCardProps> = ({
           {onEdit && (
             <button
               type="button"
-              onClick={() => onEdit(item)}
-              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
+              onClick={() => {
+                hapticTap();
+                onEdit(item);
+              }}
+              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
               title="Edit Poster"
             >
               <Edit2 className="w-4 h-4" />
@@ -113,8 +119,11 @@ export const PosterCard: React.FC<PosterCardProps> = ({
           )}
           <button
             type="button"
-            onClick={() => onDelete(item.id)}
-            className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
+            onClick={() => {
+              hapticTap();
+              onDelete(item.id);
+            }}
+            className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
             title="Delete"
           >
             <Trash2 className="w-4 h-4" />

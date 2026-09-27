@@ -45,7 +45,11 @@ Most note apps force you into one of two extremes:
 * **"Hide from All Items" Feed Protocol**: Flag individual notes or entire notebooks to be hidden from the global All Items feed so operational logbooks don't clutter your main view.
 * **Feed Reveal Toggle**: A 1-click banner above your notes reveals hidden items whenever you want to inspect them without digging through settings.
 
-### 4. 📱 Native Mobile PWA Experience — Full Rework
+### 4. 📱 Native Mobile PWA & Android APK Polish
+* **Zero Status Bar Overlap**: Native status bar overlay is disabled (`overlay: false`) and coupled with dynamic CSS safe-area padding (`env(safe-area-inset-top)`), guaranteeing the Android clock, battery, and notification bar never overlap navbar icons or titles.
+* **Live Top Bar Countdown Ticker**: Active timers update second-by-second directly inside the top navbar pill without needing to open the timers modal.
+* **Full Tactile Haptics**: Native vibration feedback across the entire app (tabs, quick-add FAB, counter tally clicks, favorite/pin actions, timer triggers) using `@capacitor/haptics` with seamless web vibration fallbacks.
+* **OS-Level Background Timer & Reminder Alarms**: Android APK utilizes `@capacitor/local-notifications` with high-importance channels (`allowWhileIdle: true`) to ring alerts and vibrate even when the app is backgrounded or the phone is locked.
 * **Zero Browser Popups (Native Confirm Dialogs)**: All `confirm()` popups are replaced with sleek, contextual in-app confirmation sheets on mobile and centered modals on desktop with danger/warning badges.
 * **Fixed 5-Tab Bottom Navigation**: Native app navigation on mobile with active indicator pills, 56×56px FAB, and proper safe-area insets. Direct access to All Notes, Notebooks, Quick Add (+), Templates, and Favorites.
 * **Native Bottom-Sheet Modals**: All modals (Note Editor, Form Runner, Bookmarks, Counters, Notebooks, Scrapbooks, Confirmations) slide up from the bottom on mobile, using `h-[97dvh]` for precise screen coverage. Full rounded corners on desktop, top-only on mobile.

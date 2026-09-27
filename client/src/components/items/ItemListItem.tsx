@@ -17,6 +17,7 @@ import {
   Circle
 } from 'lucide-react';
 import { counterAction } from '../../api/index.js';
+import { hapticMedium, hapticTap } from '../../services/native.js';
 
 interface ItemListItemProps {
   item: Item;
@@ -86,6 +87,7 @@ export const ItemListItem: React.FC<ItemListItemProps> = ({
   // Quick Counter Adjustment
   const handleQuickAdjust = async (e: React.MouseEvent, delta: number) => {
     e.stopPropagation();
+    hapticMedium();
     try {
       const res = await counterAction(item.id, { delta });
       onUpdate({
@@ -99,6 +101,7 @@ export const ItemListItem: React.FC<ItemListItemProps> = ({
 
   const handleToggleProcessed = (e: React.MouseEvent) => {
     e.stopPropagation();
+    hapticTap();
     if (onToggleProcessed) {
       onToggleProcessed(item);
     } else {

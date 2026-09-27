@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.5.0  
-> **Last Updated:** September 27, 2026 — Offline-First IndexedDB Engine, Outbox Mutation Queue, 3-Way Git-Style Sync & Visual Conflict Resolver  
+> **Document Version:** 1.6.0  
+> **Last Updated:** September 27, 2026 — Mobile Status Bar Insets, Native Haptics Engine, Live Header Ticker, Background Timer Alarms & Persistent APK Keystore Signing  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -442,8 +442,11 @@ The inner screen of foldables like the Z Fold 6 is ~360px wide — between `sm` 
 * `-webkit-overflow-scrolling: touch` enables momentum scrolling on iOS.
 * `font-size: max(16px, 1em)` on inputs prevents iOS auto-zoom on focus.
 * Active states: `active:scale-[0.98]` on cards, `active:scale-95` on buttons for tactile feedback.
+* **Native Haptic Feedback Engine (`services/native.ts`):** Direct tactile physical feedback using `@capacitor/haptics` with seamless `navigator.vibrate` web fallback. Integrated on bottom navigation tabs, FAB quick-add, counter increments/decrements, item pins/favorites, form runner completions, timer play/pause/reset, and alarm alerts (`hapticTap()`, `hapticMedium()`, `hapticHeavy()`, `hapticSuccess()`, `hapticWarning()`).
 
-### 6. Mobile Navbar Improvements
+### 6. Mobile Navbar & Safe Area Insets
+* **Status Bar Non-Overlap:** Explicitly configures `StatusBar.setOverlaysWebView({ overlay: false })` in Capacitor alongside CSS environment safe areas: `pt-[max(env(safe-area-inset-top),0.625rem)]` on `<Navbar>` and `pt-[max(env(safe-area-inset-top),1rem)]` on `<Sidebar>` brand header. This prevents the Android/iOS status bar (clock, battery, Wi-Fi) from overlapping buttons or navigation controls.
+* **Live Header Countdown Ticker:** The top navigation bar runs a 1000ms interval ticker against `runningTimer` so the top countdown pill updates live second-by-second without needing to open the timers modal.
 * **Back button:** `h-11` with pill shape and `touch-manipulation` — much easier to tap than the previous compact button.
 * **Search bar on mobile:** `h-12` input, autofocuses on open, X to clear closes the bar.
 * **Type filter chips:** `h-10 sm:h-9` — slightly taller on mobile for easier tap.
@@ -555,7 +558,8 @@ Detailed architectural blueprints and migration steps are maintained in [`.agent
   * **Configuration:** [`capacitor.config.ts`](file:///home/codaine/Projects/free-form/capacitor.config.ts) (`appId: 'io.freeform.notes'`, `cleartext: true`, `androidScheme: 'http'`).
   * **Native Project:** Complete Android Studio project under [`android/`](file:///home/codaine/Projects/free-form/android/) with adaptive icons (`mipmap-*`) and splash drawables.
   * **Dynamic Server Switcher:** Stored via `@capacitor/preferences` with full test and reconnect capabilities directly inside [`SettingsModal.tsx`](file:///home/codaine/Projects/free-form/client/src/components/modals/SettingsModal.tsx).
-  * **Native Background Timer Alarms:** Integrated via [`client/src/services/native.ts`](file:///home/codaine/Projects/free-form/client/src/services/native.ts) and `@capacitor/local-notifications`.
+  * **Native Background Timer Alarms:** Integrated via [`client/src/services/native.ts`](file:///home/codaine/Projects/free-form/client/src/services/native.ts) and `@capacitor/local-notifications`. Features dedicated `timer_alarms` Android notification channel (`IMPORTANCE_HIGH = 5`, vibration, public lock-screen visibility, custom sound, `allowWhileIdle: true`) to ring OS-level alarms even when the app is minimized or the screen is locked.
+  * **Persistent Keystore & In-Place Updates:** Configured with a dedicated, permanent release keystore (`android/app/freeform.keystore`, alias `freeform`) so all local `./scripts/build-apk.sh` builds and GitHub Actions CI/CD releases share the exact same SHA-256 certificate signature. In-place `.apk` updates install seamlessly without needing to uninstall previous builds.
   * **Automated CI/CD & Build Scripts:** [`.github/workflows/build-apk.yml`](file:///home/codaine/Projects/free-form/.github/workflows/build-apk.yml) compiles and attaches `free-form-vX.X.X.apk` (and `free-form.apk`) to workflow artifacts and tagged GitHub releases; [`scripts/build-apk.sh`](file:///home/codaine/Projects/free-form/scripts/build-apk.sh) provides 1-command local building.
 * **Linux Desktop Packaging (Tauri 2):** Lightweight Rust-based shell (~12MB AppImage, ~40MB RAM) producing `.AppImage`, `.deb`, and `.rpm` packages with native Plasma 6 / GNOME system tray integration and countdown timers.
 
@@ -582,7 +586,21 @@ Modeled after YardStik, this script provides automated zero-downtime container t
 
 ## 14. Critical Workarounds, Gotchas & Hard-Won Lessons
 
-### 1. Android Capacitor `androidScheme: 'http'` for Mixed ws:// and wss://
+### 1. Capacitor Root `package.json` Plugin Discovery in NPM Workspaces
+* **Issue:** In an npm workspaces repo (`client`, `server`), running `npx cap sync android` only discovers native plugins defined in the root `package.json`. If `@capacitor/haptics`, `@capacitor/local-notifications`, etc. are only listed in `client/package.json`, Capacitor CLI silently discovers 0 plugins and omits their Java bindings from `capacitor.settings.gradle` and `build.gradle`.
+* **Resolution:** Always install `@capacitor/*` plugins at the workspace root (`npm install @capacitor/haptics @capacitor/local-notifications @capacitor/status-bar ... -w .`) so `npx cap sync` detects and binds every native plugin.
+
+### 2. Android In-Place APK Update Incompatibility (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`)
+* **Issue:** Sideloading a newly built APK over an existing installation failed with an error, forcing users to uninstall and lose local SQLite/Preferences cache.
+* **Root Cause:** Default debug builds generate transient, randomized debug keystores with different SHA-256 certificate fingerprints on each build machine or CI run.
+* **Resolution:** Checked in a persistent project keystore `android/app/freeform.keystore` and configured `signingConfigs.release` in `android/app/build.gradle` for both debug and release configurations. Version codes are derived dynamically from `package.json`.
+
+### 3. Google Play Protect Sideload Warning
+* **Issue:** Sideloading raw APKs on Android triggers Google Play Protect: *"App blocked to protect your device — Google doesn't recognise the developer"*.
+* **Root Cause:** Android automatically flags newly signed APKs outside the Play Store whose certificate SHA-256 fingerprint has not been seen in the Google Play ecosystem before.
+* **Resolution:** Users can tap **"More details" -> "Install anyway"**. For automated system-wide whitelisting without warnings, submit the APK to the [Google Play Protect Developer Appeals Portal](https://play.google.com/protect/feedback).
+
+### 4. Android Capacitor `androidScheme: 'http'` for Mixed ws:// and wss://
 * **Issue:** When `androidScheme` was set to `'https'`, Chromium WebView blocked unencrypted WebSocket (`ws://`) connections to local LAN / Tailscale IPs due to Strict Mixed Content security policies.
 * **Resolution:** Configure `androidScheme: 'http'` in `capacitor.config.ts`. This permits both unencrypted `ws://` connections to LAN/Tailscale IPs as well as secure `wss://` connections to Cloudflare Tunnels and reverse proxy domains.
 

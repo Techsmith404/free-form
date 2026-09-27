@@ -1,6 +1,7 @@
 import React from 'react';
 import { Item, BookmarkMetadata } from '../../types/index.js';
 import { ExternalLink, Globe, Trash2, Edit2, Bookmark, EyeOff } from 'lucide-react';
+import { hapticTap } from '../../services/native.js';
 
 interface BookmarkCardProps {
   item: Item;
@@ -87,6 +88,7 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
             href={meta.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => hapticTap()}
             className="flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-md shadow-blue-500/20 active:scale-95 touch-manipulation"
           >
             <span>Visit Link</span>
@@ -97,7 +99,10 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
             {onEdit && (
               <button
                 type="button"
-                onClick={() => onEdit(item)}
+                onClick={() => {
+                  hapticTap();
+                  onEdit(item);
+                }}
                 className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
                 title="Edit Bookmark"
               >
@@ -106,7 +111,10 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
             )}
             <button
               type="button"
-              onClick={() => onDelete(item.id)}
+              onClick={() => {
+                hapticTap();
+                onDelete(item.id);
+              }}
               className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
               title="Delete"
             >

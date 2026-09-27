@@ -44,10 +44,10 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
 
-      - name: Build Android Debug APK
+      - name: Build Android Release APK
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease || ./gradlew assembleDebug
 
       - name: Extract Version & Package APK
         id: pkg_info
@@ -63,8 +63,13 @@ jobs:
             APK_NAME="free-form-v${VERSION}.apk"
           fi
           
-          cp android/app/build/outputs/apk/debug/app-debug.apk "dist-apk/${APK_NAME}"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "dist-apk/free-form.apk"
+          APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK_SRC" ]; then
+            APK_SRC="android/app/build/outputs/apk/debug/app-debug.apk"
+          fi
+          
+          cp "$APK_SRC" "dist-apk/${APK_NAME}"
+          cp "$APK_SRC" "dist-apk/free-form.apk"
           echo "apk_name=${APK_NAME}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 

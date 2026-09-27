@@ -1,14 +1,48 @@
 apply plugin: 'com.android.application'
 
+def getAppVersionCode = { ->
+    try {
+        def pkgJson = new groovy.json.JsonSlurper().parse(file("../../package.json"))
+        def versionParts = pkgJson.version.tokenize('.')
+        int major = versionParts[0].toInteger()
+        int minor = versionParts[1].toInteger()
+        int patch = versionParts[2].toInteger()
+        return major * 10000 + minor * 100 + patch
+    } catch (Exception e) {
+        return 1
+    }
+}
+
+def getAppVersionName = { ->
+    try {
+        def pkgJson = new groovy.json.JsonSlurper().parse(file("../../package.json"))
+        return pkgJson.version
+    } catch (Exception e) {
+        return "1.0.0"
+    }
+}
+
 android {
     namespace = "io.freeform.notes"
     compileSdk = rootProject.ext.compileSdkVersion
+
+    signingConfigs {
+        release {
+            storeFile file('freeform.keystore')
+            storePassword 'freeform123'
+            keyAlias 'freeform'
+            keyPassword 'freeform123'
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
     defaultConfig {
         applicationId "io.freeform.notes"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode getAppVersionCode()
+        versionName getAppVersionName()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -19,7 +53,11 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            signingConfig signingConfigs.release
         }
     }
 }

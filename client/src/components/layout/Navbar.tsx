@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ItemType, Notebook } from '../../types/index.js';
 import { useRealtime } from '../../context/RealtimeContext.js';
+import { hapticTap, hapticMedium } from '../../services/native.js';
 import {
   Search,
   LayoutGrid,
@@ -75,6 +76,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   const runningTimer = timers.find((t) => t.status === 'running');
   const triggeredReminder = reminders.find((r) => r.status === 'triggered');
 
+  // Live ticker so the countdown in the top bar updates smoothly every second without opening modal
+  const [, setNavTick] = useState(0);
+  useEffect(() => {
+    if (!runningTimer) return;
+    const interval = setInterval(() => {
+      setNavTick((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [runningTimer]);
+
   const formatCountdown = (t: typeof runningTimer) => {
     if (!t) return '';
     let rem = t.remaining_seconds;
@@ -125,7 +136,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800 px-3 sm:px-6 py-2.5 sm:py-3.5 space-y-2.5">
+    <header className="sticky top-0 z-30 bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800 px-3 sm:px-6 pt-[max(env(safe-area-inset-top),0.625rem)] pb-2.5 sm:pb-3.5 space-y-2.5">
       {/* Top Row */}
       <div className="flex items-center justify-between gap-2">
         {/* Left: Mobile Back Button OR Drawer Trigger + Notebook Header */}
@@ -133,7 +144,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onBack ? (
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                hapticTap();
+                onBack();
+              }}
               className="lg:hidden h-11 px-3.5 flex items-center gap-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 active:scale-95 transition shrink-0 text-sm font-bold touch-manipulation"
               title={backLabel || 'Go Back'}
             >
@@ -143,7 +157,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <button
               type="button"
-              onClick={onOpenMobileSidebar}
+              onClick={() => {
+                hapticTap();
+                onOpenMobileSidebar();
+              }}
               className="lg:hidden h-11 w-11 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white active:scale-95 transition shrink-0 touch-manipulation"
               aria-label="Open Navigation Menu"
             >
@@ -226,7 +243,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           {activeNotebook && (
             <button
               type="button"
-              onClick={onQuickAdd}
+              onClick={() => {
+                hapticTap();
+                onQuickAdd();
+              }}
               className="hidden sm:flex items-center gap-1.5 h-10 px-4 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold transition shadow-md shadow-brand-500/20 active:scale-95"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -238,7 +258,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           {ringingTimer || triggeredReminder ? (
             <button
               type="button"
-              onClick={() => setTimersModalOpen(true)}
+              onClick={() => {
+                hapticTap();
+                setTimersModalOpen(true);
+              }}
               className="h-10 px-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 animate-pulse shadow-lg shadow-red-500/30 transition active:scale-95 touch-manipulation"
               title="Alarm Ringing! Tap to view/stop"
             >
@@ -248,7 +271,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : runningTimer ? (
             <button
               type="button"
-              onClick={() => setTimersModalOpen(true)}
+              onClick={() => {
+                hapticTap();
+                setTimersModalOpen(true);
+              }}
               className="h-10 px-3 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition active:scale-95 touch-manipulation"
               title={`Active Timer: ${runningTimer.title}`}
             >
@@ -259,7 +285,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <button
               type="button"
-              onClick={() => setTimersModalOpen(true)}
+              onClick={() => {
+                hapticTap();
+                setTimersModalOpen(true);
+              }}
               className="h-10 px-2.5 sm:px-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 touch-manipulation"
               title="Universal Synced Timers & Reminders"
             >
@@ -272,7 +301,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           {isConnected ? (
             <button
               type="button"
-              onClick={manualReconnect}
+              onClick={() => {
+                hapticTap();
+                manualReconnect();
+              }}
               title="Server Connected (Realtime WebSocket Active). Click to re-sync."
               className="h-10 px-2.5 bg-emerald-500/10 border border-emerald-500/25 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 touch-manipulation"
             >
@@ -282,7 +314,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <button
               type="button"
-              onClick={manualReconnect}
+              onClick={() => {
+                hapticTap();
+                manualReconnect();
+              }}
               title={
                 isConnecting
                   ? `Attempting to reconnect (attempt ${reconnectAttempt})... Click to retry immediately.`
@@ -299,7 +334,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onToggleExpandAll && (
             <button
               type="button"
-              onClick={onToggleExpandAll}
+              onClick={() => {
+                hapticTap();
+                onToggleExpandAll();
+              }}
               className={`h-11 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border text-xs font-bold transition active:scale-95 touch-manipulation ${
                 isExpandedAll
                   ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
@@ -316,7 +354,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-1">
             <button
               type="button"
-              onClick={() => onViewModeChange('grid')}
+              onClick={() => {
+                hapticTap();
+                onViewModeChange('grid');
+              }}
               className={`h-9 w-9 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 viewMode === 'grid'
                   ? 'bg-zinc-800 text-brand-400 font-bold shadow-sm'
@@ -328,7 +369,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onViewModeChange('list')}
+              onClick={() => {
+                hapticTap();
+                onViewModeChange('list');
+              }}
               className={`h-9 w-9 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 viewMode === 'list'
                   ? 'bg-zinc-800 text-brand-400 font-bold shadow-sm'
@@ -344,7 +388,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onOpenSettings && (
             <button
               type="button"
-              onClick={onOpenSettings}
+              onClick={() => {
+                hapticTap();
+                onOpenSettings();
+              }}
               className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition active:scale-95 touch-manipulation"
               title="Settings & Preferences"
               aria-label="Settings & Preferences"
@@ -392,7 +439,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <button
             type="button"
-            onClick={() => setConflictModalOpen(true)}
+            onClick={() => {
+              hapticTap();
+              setConflictModalOpen(true);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-black text-xs font-bold rounded-lg hover:bg-amber-400 transition-colors shrink-0 shadow-sm"
           >
             <GitMerge className="w-3.5 h-3.5" />
@@ -409,7 +459,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               key={filter.value}
               type="button"
-              onClick={() => onSelectType(filter.value)}
+              onClick={() => {
+                hapticTap();
+                onSelectType(filter.value);
+              }}
               className={`h-10 sm:h-9 px-3.5 rounded-xl transition shrink-0 flex items-center gap-1.5 active:scale-95 font-semibold text-sm touch-manipulation ${
                 isActive
                   ? filter.activeClass

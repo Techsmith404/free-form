@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Notebook, FormTemplate, Tag } from '../../types/index.js';
 import { getExportUrl } from '../../api/index.js';
 import { useRealtime } from '../../context/RealtimeContext.js';
+import { hapticTap, hapticMedium } from '../../services/native.js';
 import {
   Folder,
   Plus,
@@ -76,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const pendingRemindersCount = reminders.filter((r) => r.status === 'pending' || r.status === 'triggered').length;
 
   const handleSelectNav = (action: () => void) => {
+    hapticTap();
     action();
     onCloseMobile();
   };
@@ -96,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }`}
       >
         {/* Brand Header */}
-        <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between">
+        <div className="p-4 sm:p-5 pt-[max(env(safe-area-inset-top),1rem)] border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
               src="/logo.svg?v=2"
@@ -117,7 +119,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Close button — large touch target */}
           <button
             type="button"
-            onClick={onCloseMobile}
+            onClick={() => {
+              hapticTap();
+              onCloseMobile();
+            }}
             className="lg:hidden h-11 w-11 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-900 transition touch-manipulation"
             aria-label="Close Navigation"
           >
@@ -475,7 +480,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-zinc-800 bg-zinc-950 space-y-2">
+        <div className="p-4 pb-[max(env(safe-area-inset-bottom),1rem)] border-t border-zinc-800 bg-zinc-950 space-y-2">
           {onOpenSettings && (
             <button
               type="button"

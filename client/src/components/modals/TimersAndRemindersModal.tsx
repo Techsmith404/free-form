@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRealtime } from '../../context/RealtimeContext.js';
 import { Notebook, Timer, Reminder } from '../../types/index.js';
+import { hapticTap, hapticMedium, hapticSuccess } from '../../services/native.js';
 import {
   X,
   Clock,
@@ -87,6 +88,7 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
   ];
 
   const handleStartPreset = async (preset: { label: string; seconds: number }) => {
+    hapticMedium();
     await createTimer({
       title: timerTitle.trim() || preset.label,
       duration_seconds: preset.seconds,
@@ -101,6 +103,7 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
     const totalSeconds = timerMinutes * 60 + timerSeconds;
     if (totalSeconds <= 0) return;
 
+    hapticSuccess();
     await createTimer({
       title: timerTitle.trim() || `${timerMinutes}m Timer`,
       duration_seconds: totalSeconds,
@@ -115,6 +118,7 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
     e.preventDefault();
     if (!reminderTitle.trim() || !reminderDueDate) return;
 
+    hapticSuccess();
     await createReminder({
       title: reminderTitle.trim(),
       notes: reminderNotes.trim(),
@@ -148,7 +152,7 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-4 pt-[max(env(safe-area-inset-top),0.75rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="relative w-full max-w-2xl max-h-[92vh] bg-zinc-950 border border-zinc-800 rounded-3xl flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
@@ -169,7 +173,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              hapticTap();
+              onClose();
+            }}
             className="p-2 text-zinc-400 hover:text-white rounded-xl hover:bg-zinc-900 transition min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
           >
             <X className="w-5 h-5" />
@@ -180,7 +187,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
         <div className="flex items-center border-b border-zinc-800/80 bg-zinc-900/50 px-5 pt-2 shrink-0">
           <button
             type="button"
-            onClick={() => setActiveTab('timers')}
+            onClick={() => {
+              hapticTap();
+              setActiveTab('timers');
+            }}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition min-h-[44px] touch-manipulation ${
               activeTab === 'timers'
                 ? 'border-brand-500 text-brand-400 font-bold'
@@ -192,7 +202,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('reminders')}
+            onClick={() => {
+              hapticTap();
+              setActiveTab('reminders');
+            }}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition min-h-[44px] touch-manipulation ${
               activeTab === 'reminders'
                 ? 'border-brand-500 text-brand-400 font-bold'
@@ -351,7 +364,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                             {isRunning ? (
                               <button
                                 type="button"
-                                onClick={() => pauseTimer(timer.id)}
+                                onClick={() => {
+                                  hapticTap();
+                                  pauseTimer(timer.id);
+                                }}
                                 className="h-9 px-3 bg-zinc-800 hover:bg-zinc-700 text-amber-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition active:scale-95 touch-manipulation"
                               >
                                 <Pause className="w-3.5 h-3.5" />
@@ -360,7 +376,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => startTimer(timer.id)}
+                                onClick={() => {
+                                  hapticMedium();
+                                  startTimer(timer.id);
+                                }}
                                 className="h-9 px-3 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition active:scale-95 touch-manipulation"
                               >
                                 <Play className="w-3.5 h-3.5" />
@@ -370,7 +389,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
 
                             <button
                               type="button"
-                              onClick={() => resetTimer(timer.id)}
+                              onClick={() => {
+                                hapticTap();
+                                resetTimer(timer.id);
+                              }}
                               className="h-9 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-semibold rounded-lg flex items-center gap-1 transition active:scale-95 touch-manipulation"
                               title="Reset"
                             >
@@ -380,7 +402,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                             {isRinging && (
                               <button
                                 type="button"
-                                onClick={() => dismissTimer(timer.id)}
+                                onClick={() => {
+                                  hapticTap();
+                                  dismissTimer(timer.id);
+                                }}
                                 className="h-9 px-3 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-red-500/30 touch-manipulation"
                               >
                                 <span>Stop Ringing</span>
@@ -390,7 +415,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
 
                           <button
                             type="button"
-                            onClick={() => deleteTimer(timer.id)}
+                            onClick={() => {
+                              hapticTap();
+                              deleteTimer(timer.id);
+                            }}
                             className="h-9 w-9 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-lg flex items-center justify-center transition active:scale-95 touch-manipulation"
                             title="Delete Timer"
                           >
@@ -516,7 +544,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                         {/* Checkbox button */}
                         <button
                           type="button"
-                          onClick={() => completeReminder(reminder.id)}
+                          onClick={() => {
+                            hapticTap();
+                            completeReminder(reminder.id);
+                          }}
                           className={`mt-0.5 w-6 h-6 rounded-lg border flex items-center justify-center transition shrink-0 ${
                             isCompleted
                               ? 'bg-emerald-500 border-emerald-500 text-white'
@@ -555,7 +586,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                           {!isCompleted && (
                             <button
                               type="button"
-                              onClick={() => snoozeReminder(reminder.id, 10)}
+                              onClick={() => {
+                                hapticTap();
+                                snoozeReminder(reminder.id, 10);
+                              }}
                               className="h-8 px-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-semibold rounded-lg transition active:scale-95 touch-manipulation"
                               title="Snooze 10m"
                             >
@@ -564,7 +598,10 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                           )}
                           <button
                             type="button"
-                            onClick={() => deleteReminder(reminder.id)}
+                            onClick={() => {
+                              hapticTap();
+                              deleteReminder(reminder.id);
+                            }}
                             className="h-8 w-8 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-lg flex items-center justify-center transition active:scale-95 touch-manipulation"
                             title="Delete Reminder"
                           >
