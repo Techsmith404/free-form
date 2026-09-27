@@ -8,6 +8,9 @@ import {
   cancelNativeTimerAlarm,
   scheduleNativeReminderAlarm,
   cancelNativeReminderAlarm,
+  triggerNativeAlarmSound,
+  stopNativeAlarmSound,
+  onNativeTimerAction,
   hapticWarning
 } from '../services/native.js';
 
@@ -68,6 +71,10 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       startAlarmChime();
       hapticWarning();
 
+      if (ringingTimer) {
+        triggerNativeAlarmSound(ringingTimer.id, ringingTimer.title);
+      }
+
       // Show browser system notification if permitted
       if ('Notification' in window && Notification.permission === 'granted') {
         const title = ringingTimer ? `⏰ Timer Finished: ${ringingTimer.title}` : `🔔 Reminder: ${triggeredReminder?.title}`;
@@ -81,6 +88,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } else {
       stopAlarmChime();
+      stopNativeAlarmSound();
     }
   }, [ringingTimer, triggeredReminder]);
 
@@ -90,11 +98,10 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (timer.status === 'running' && timer.target_end_time) {
         scheduleNativeTimerAlarm(timer.id, timer.title, new Date(timer.target_end_time));
       } else {
-        cancelNativeTimerAlarm(timer.id, timer.title);
+        cancelNativeTimerAlarm(timer.id);
       }
     });
   }, [timers]);
-
 
   // Synchronize OS-level native alarms whenever reminders change
   useEffect(() => {
@@ -274,6 +281,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (socketRef.current) socketRef.current.close();
       stopAlarmChime();
+      stopNativeAlarmSound();
     };
   }, [refreshState, manualReconnect]);
 
@@ -297,13 +305,18 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
           return [event.payload.timer, ...prev];
         });
+        if (event.payload.timer.status !== 'ringing') {
+          stopNativeAlarmSound(event.payload.timer.id);
+        }
         break;
 
       case 'TIMER_DELETED':
+        stopNativeAlarmSound(event.payload.timerId);
         setTimers((prev) => prev.filter((t) => t.id !== event.payload.timerId));
         break;
 
       case 'TIMER_RING':
+        triggerNativeAlarmSound(event.payload.timer.id, event.payload.timer.title);
         setTimers((prev) => {
           const index = prev.findIndex((t) => t.id === event.payload.timer.id);
           if (index >= 0) {
@@ -316,6 +329,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         break;
 
       case 'TIMER_DISMISSED':
+        stopNativeAlarmSound(event.payload.timerId);
         setTimers((prev) =>
           prev.map((t) => (t.id === event.payload.timerId ? { ...t, status: 'dismissed' } : t))
         );
@@ -379,10 +393,12 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const resetTimer = async (id: string) => {
+    stopNativeAlarmSound(id);
     await api.resetTimer(id);
   };
 
   const dismissTimer = async (id: string) => {
+    stopNativeAlarmSound(id);
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'DISMISS_TIMER', timerId: id }));
     }
@@ -390,8 +406,25 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteTimer = async (id: string) => {
+    stopNativeAlarmSound(id);
     await api.deleteTimer(id);
   };
+
+  // Listen for native notification actions (e.g. tapping Stop or Pause on lock screen / notification shade)
+  useEffect(() => {
+    const cleanup = onNativeTimerAction(({ action, timerId }) => {
+      if (action === 'stop') {
+        dismissTimer(timerId);
+      } else if (action === 'pause') {
+        pauseTimer(timerId);
+      } else if (action === 'ring') {
+        setTimers((prev) =>
+          prev.map((t) => (t.id === timerId ? { ...t, status: 'ringing', remaining_seconds: 0 } : t))
+        );
+      }
+    });
+    return cleanup;
+  }, []);
 
   const createReminder = async (data: { title: string; notes?: string; due_date: string; priority?: 'low' | 'normal' | 'high'; notebook_id?: string | null }) => {
     return api.createReminder(data);

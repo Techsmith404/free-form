@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.6.0  
-> **Last Updated:** September 27, 2026 — Mobile Status Bar Insets, Native Haptics Engine, Live Header Ticker, Background Timer Alarms & Persistent APK Keystore Signing  
+> **Document Version:** 1.7.0  
+> **Last Updated:** September 27, 2026 — Native Android Timer Engine, Persistent Lock-Screen Chronometer, System Alarm Ringtone Audio & Bi-Directional Cross-Device WebSocket Synchronization  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -447,14 +447,14 @@ The inner screen of foldables like the Z Fold 6 is ~360px wide — between `sm` 
   * `hapticMedium()`: Utilizes `Haptics.impact({ style: ImpactStyle.Light })` (15ms fallback) for counter tally clicks and step increments.
   * `hapticHeavy()`: Utilizes `Haptics.impact({ style: ImpactStyle.Medium })` (30ms fallback) for destructive deletions and archive actions.
   * `hapticSuccess()` / `hapticWarning()`: Multi-pulse patterns for form runner completion and ringing timer/reminder alarms.
-* **Native Live Chronometer Countdown Notifications (`NativeTimerPlugin.java`):**
-  * Implemented custom Android Capacitor plugin (`NativeTimer`) leveraging Android's native `NotificationCompat.Builder.setUsesChronometer(true)` and `setChronometerCountDown(true)` with `setShowWhen(true)` and `setWhen(targetEndTimeMillis)` on `NotificationManager.IMPORTANCE_DEFAULT` (`timer_countdown_channel`, silent, vibration disabled).
-  * Robust numerical type parsing (`optLong` / `optDouble` / `optString`) prevents JSON type-casting failures in Capacitor bridge.
-  * As soon as a timer starts, Android SystemUI renders a persistent, second-by-second live ticking countdown in the notification shade and lock screen without draining battery or needing background JS loops.
-  * When the timer finishes, the ongoing chronometer notification is cleanly dismissed, and the high-priority alarm channel (`timer_alarms`) triggers the completion alert with heads-up banner, sound, and vibration.
-* **Direct Android System Clock App Integration (`AlarmClock.ACTION_SET_TIMER`):**
-  * Added `setNativeSystemClockTimer()` utilizing Android's official system intent `AlarmClock.ACTION_SET_TIMER` with `<uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>`.
-  * Users can launch and register timers directly inside their phone's native Clock app (Samsung Clock / Google Clock) alongside Free Form's synchronized in-app and notification timers with a single tap.
+* **First-Party Native Android Timer Engine (`NativeTimerPlugin.java` & `NativeAlarmReceiver.java`):**
+  * **Persistent Live Chronometer (`timer_countdown_channel`):** Uses Android's native `NotificationCompat.Builder.setUsesChronometer(true)`, `setChronometerCountDown(true)`, `setOngoing(true)`, and `setWhen(targetEndTimeMillis)` on `IMPORTANCE_LOW` with public lock-screen visibility (`VISIBILITY_PUBLIC`) and category `CATEGORY_STOPWATCH`.
+  * **Sticky & Protected:** Immune to "Clear all notifications" actions in the Android shade, keeping the live ticking countdown pinned until stopped or expired.
+  * **Interactive Notification Actions:** Equips the live notification and lock-screen widget with native action buttons (`[⏸ Pause]` and `[⏹ Stop]`) that dispatch directly through `NativeAlarmReceiver` back to the app's WebSocket gateway.
+  * **OS-Level High-Priority Alarm (`AlarmManager.RTC_WAKEUP`):** When the timer reaches 0, `AlarmManager` triggers `NativeAlarmReceiver`, waking the screen and playing the device's native system alarm ringtone (`RingtoneManager.TYPE_ALARM`) on the alarm audio stream with looping and vibration.
+  * **Full-Screen Heads-Up Alarm Alert:** Posts a high-priority heads-up modal (`CATEGORY_ALARM`, `PRIORITY_MAX`, `IMPORTANCE_HIGH`) with a 1-tap `[⏹ Stop Alarm]` action that displays directly over the lock screen or any active app.
+  * **True Bi-Directional Cross-Device WebSocket Synchronization:** Stopping or pausing the timer on Android sends a WebSocket event silencing all desktop/laptop screens immediately; stopping the alarm on desktop or web instantly calls `NativeTimer.stopAlarm()` on Android, silencing the phone ringtone and clearing the notification.
+  * **Clean OEM Separation:** Fully eliminates one-way Samsung Clock collisions (`AlarmClock.ACTION_SET_TIMER`), ensuring a single unified timer experience.
 
 ### 6. Mobile Navbar & Safe Area Insets
 * **Status Bar Non-Overlap:** Explicitly configures `StatusBar.setOverlaysWebView({ overlay: false })` in Capacitor alongside CSS environment safe areas: `pt-[max(env(safe-area-inset-top),0.625rem)]` on `<Navbar>` and `pt-[max(env(safe-area-inset-top),1rem)]` on `<Sidebar>` brand header. This prevents the Android/iOS status bar (clock, battery, Wi-Fi) from overlapping buttons or navigation controls.

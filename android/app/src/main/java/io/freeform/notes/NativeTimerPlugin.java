@@ -1,14 +1,12 @@
 package io.freeform.notes;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
+import android.app.AlarmManager;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
 import android.os.Build;
-import android.provider.AlarmClock;
+import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -18,10 +16,39 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "NativeTimer")
 public class NativeTimerPlugin extends Plugin {
+    private static final String TAG = "NativeTimerPlugin";
+    private static NativeTimerPlugin instance = null;
 
-    private static final String COUNTDOWN_CHANNEL_ID = "timer_countdown_channel";
-    private static final String ALARM_CHANNEL_ID = "timer_alarms";
-    private static final int ONGOING_NOTIFICATION_BASE_ID = 880000;
+    @Override
+    public void load() {
+        super.load();
+        instance = this;
+        Context context = getContext();
+        if (context != null) {
+            NativeAlarmReceiver.createChannels(context);
+        }
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (instance == this) {
+            instance = null;
+        }
+        super.handleOnDestroy();
+    }
+
+    public static void sendTimerActionEvent(String action, String timerId) {
+        if (instance != null) {
+            try {
+                JSObject data = new JSObject();
+                data.put("action", action);
+                data.put("timerId", timerId);
+                instance.notifyListeners("onTimerAction", data);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to send timer action event", e);
+            }
+        }
+    }
 
     private NotificationManager getNotificationManager() {
         Context context = getContext();
@@ -29,43 +56,10 @@ public class NativeTimerPlugin extends Plugin {
         return (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
     }
 
-    private void createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager nm = getNotificationManager();
-            if (nm == null) return;
-
-            // 1. Ongoing countdown channel (Default importance: visible in shade & lock screen, silent, live chronometer)
-            NotificationChannel countdownChannel = new NotificationChannel(
-                COUNTDOWN_CHANNEL_ID,
-                "Active Timer Countdowns",
-                NotificationManager.IMPORTANCE_DEFAULT
-            );
-            countdownChannel.setDescription("Live countdown timer in notification shade and lock screen");
-            countdownChannel.setShowBadge(false);
-            countdownChannel.enableVibration(false);
-            countdownChannel.setSound(null, null);
-            countdownChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            nm.createNotificationChannel(countdownChannel);
-
-            // 2. High importance alarm channel for completed timers & reminders
-            NotificationChannel alarmChannel = new NotificationChannel(
-                ALARM_CHANNEL_ID,
-                "Timers & Reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            alarmChannel.setDescription("High-priority alarm notifications for Free Form timers and reminders");
-            alarmChannel.setShowBadge(true);
-            alarmChannel.enableVibration(true);
-            alarmChannel.enableLights(true);
-            alarmChannel.setLightColor(Color.parseColor("#48BEB6"));
-            alarmChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            nm.createNotificationChannel(alarmChannel);
-        }
-    }
-
-    private int getNotificationId(String timerId) {
-        int hash = timerId.hashCode();
-        return ONGOING_NOTIFICATION_BASE_ID + Math.abs(hash % 10000);
+    private AlarmManager getAlarmManager() {
+        Context context = getContext();
+        if (context == null) return null;
+        return (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
     }
 
     private long getLongValue(PluginCall call, String key) {
@@ -85,9 +79,31 @@ public class NativeTimerPlugin extends Plugin {
         return 0L;
     }
 
+    private PendingIntent getAlarmPendingIntent(Context context, String timerId, String title, int flags) {
+        Intent alarmIntent = new Intent(context, NativeAlarmReceiver.class);
+        alarmIntent.setAction(NativeAlarmReceiver.ACTION_ALARM_TRIGGER);
+        alarmIntent.putExtra("timerId", timerId);
+        alarmIntent.putExtra("title", title);
+        return PendingIntent.getBroadcast(
+            context,
+            NativeAlarmReceiver.getAlarmNotificationId(timerId),
+            alarmIntent,
+            flags
+        );
+    }
+
     @PluginMethod
     public void startCountdownNotification(PluginCall call) {
-        createNotificationChannels();
+        Context context = getContext();
+        NotificationManager nm = getNotificationManager();
+        AlarmManager am = getAlarmManager();
+
+        if (context == null || nm == null) {
+            call.reject("Context or NotificationManager unavailable");
+            return;
+        }
+
+        NativeAlarmReceiver.createChannels(context);
 
         String timerId = call.getString("timerId", "default");
         String title = call.getString("title", "Timer");
@@ -98,30 +114,60 @@ public class NativeTimerPlugin extends Plugin {
             return;
         }
 
-        Context context = getContext();
-        NotificationManager nm = getNotificationManager();
-        if (nm == null || context == null) {
-            call.reject("Context or NotificationManager unavailable");
-            return;
-        }
-
-        Intent openAppIntent = new Intent(context, MainActivity.class);
-        openAppIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        openAppIntent.putExtra("timerId", timerId);
-
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flags |= PendingIntent.FLAG_IMMUTABLE;
         }
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, openAppIntent, flags);
 
-        int smallIcon = R.mipmap.ic_launcher;
+        // 1. Schedule native AlarmManager to trigger alarm when time expires
+        if (am != null) {
+            PendingIntent alarmPendingIntent = getAlarmPendingIntent(context, timerId, title, flags);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetEndTimeMillis, alarmPendingIntent);
+                } else {
+                    am.setExact(AlarmManager.RTC_WAKEUP, targetEndTimeMillis, alarmPendingIntent);
+                }
+            } catch (SecurityException se) {
+                // If exact alarm permission not granted, fallback to set
+                am.set(AlarmManager.RTC_WAKEUP, targetEndTimeMillis, alarmPendingIntent);
+            }
+        }
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, COUNTDOWN_CHANNEL_ID)
-            .setSmallIcon(smallIcon)
+        // 2. Open App Intent on notification tap
+        Intent openAppIntent = new Intent(context, MainActivity.class);
+        openAppIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        openAppIntent.putExtra("timerId", timerId);
+        PendingIntent openPendingIntent = PendingIntent.getActivity(context, NativeAlarmReceiver.getCountdownNotificationId(timerId), openAppIntent, flags);
+
+        // 3. Action: Pause
+        Intent pauseIntent = new Intent(context, NativeAlarmReceiver.class);
+        pauseIntent.setAction(NativeAlarmReceiver.ACTION_TIMER_PAUSE);
+        pauseIntent.putExtra("timerId", timerId);
+        PendingIntent pausePendingIntent = PendingIntent.getBroadcast(
+            context,
+            NativeAlarmReceiver.getCountdownNotificationId(timerId) + 1,
+            pauseIntent,
+            flags
+        );
+
+        // 4. Action: Stop
+        Intent stopIntent = new Intent(context, NativeAlarmReceiver.class);
+        stopIntent.setAction(NativeAlarmReceiver.ACTION_TIMER_STOP);
+        stopIntent.putExtra("timerId", timerId);
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(
+            context,
+            NativeAlarmReceiver.getCountdownNotificationId(timerId) + 2,
+            stopIntent,
+            flags
+        );
+
+        // 5. Build Ongoing Chronometer Notification with Interactive Actions
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NativeAlarmReceiver.COUNTDOWN_CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("⏳ " + (title == null || title.trim().isEmpty() ? "Timer" : title))
             .setContentText("Timer running")
-            .setContentIntent(pendingIntent)
+            .setContentIntent(openPendingIntent)
             .setShowWhen(true)
             .setWhen(targetEndTimeMillis)
             .setUsesChronometer(true)
@@ -129,11 +175,13 @@ public class NativeTimerPlugin extends Plugin {
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(android.R.drawable.ic_media_pause, "Pause", pausePendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent);
 
-        int notifId = getNotificationId(timerId);
+        int notifId = NativeAlarmReceiver.getCountdownNotificationId(timerId);
         nm.notify(notifId, builder.build());
 
         JSObject res = new JSObject();
@@ -145,10 +193,28 @@ public class NativeTimerPlugin extends Plugin {
     @PluginMethod
     public void cancelCountdownNotification(PluginCall call) {
         String timerId = call.getString("timerId", "default");
+        Context context = getContext();
         NotificationManager nm = getNotificationManager();
-        if (nm != null) {
-            nm.cancel(getNotificationId(timerId));
+        AlarmManager am = getAlarmManager();
+
+        if (context != null && am != null) {
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            PendingIntent pi = getAlarmPendingIntent(context, timerId, "", flags);
+            am.cancel(pi);
         }
+
+        if (nm != null) {
+            nm.cancel(NativeAlarmReceiver.getCountdownNotificationId(timerId));
+            nm.cancel(NativeAlarmReceiver.getAlarmNotificationId(timerId));
+        }
+
+        if (context != null) {
+            AlarmSoundManager.stopAlarm(context, timerId);
+        }
+
         JSObject res = new JSObject();
         res.put("success", true);
         call.resolve(res);
@@ -156,11 +222,16 @@ public class NativeTimerPlugin extends Plugin {
 
     @PluginMethod
     public void cancelAllCountdowns(PluginCall call) {
+        Context context = getContext();
         NotificationManager nm = getNotificationManager();
         if (nm != null) {
             for (int i = 0; i < 10000; i++) {
-                nm.cancel(ONGOING_NOTIFICATION_BASE_ID + i);
+                nm.cancel(NativeAlarmReceiver.COUNTDOWN_NOTIFICATION_BASE_ID + i);
+                nm.cancel(NativeAlarmReceiver.ALARM_NOTIFICATION_BASE_ID + i);
             }
+        }
+        if (context != null) {
+            AlarmSoundManager.stopAll(context);
         }
         JSObject res = new JSObject();
         res.put("success", true);
@@ -168,57 +239,41 @@ public class NativeTimerPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void setSystemClockTimer(PluginCall call) {
-        int lengthSeconds = call.getInt("lengthSeconds", 60);
-        String title = call.getString("title", "Free Form Timer");
-        boolean skipUi = call.getBoolean("skipUi", true);
+    public void triggerAlarm(PluginCall call) {
+        Context context = getContext();
+        String timerId = call.getString("timerId", "default");
+        String title = call.getString("title", "Timer");
 
-        try {
-            Intent intent = new Intent(AlarmClock.ACTION_SET_TIMER);
-            intent.putExtra(AlarmClock.EXTRA_LENGTH, lengthSeconds);
-            intent.putExtra(AlarmClock.EXTRA_MESSAGE, title);
-            intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-            Context context = getContext();
-            if (context != null) {
-                context.startActivity(intent);
-                JSObject res = new JSObject();
-                res.put("success", true);
-                call.resolve(res);
-            } else {
-                call.reject("Context is null");
-            }
-        } catch (Exception err) {
-            call.reject("Failed to set system timer in Clock app: " + err.getMessage());
+        if (context != null) {
+            Intent intent = new Intent(context, NativeAlarmReceiver.class);
+            intent.setAction(NativeAlarmReceiver.ACTION_ALARM_TRIGGER);
+            intent.putExtra("timerId", timerId);
+            intent.putExtra("title", title);
+            context.sendBroadcast(intent);
         }
+
+        JSObject res = new JSObject();
+        res.put("success", true);
+        call.resolve(res);
     }
 
     @PluginMethod
-    public void dismissSystemClockTimer(PluginCall call) {
-        String title = call.getString("title", "Free Form Timer");
-        boolean skipUi = call.getBoolean("skipUi", true);
+    public void stopAlarm(PluginCall call) {
+        Context context = getContext();
+        String timerId = call.getString("timerId", "default");
+        NotificationManager nm = getNotificationManager();
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Intent intent = new Intent(AlarmClock.ACTION_DISMISS_TIMER);
-                intent.putExtra(AlarmClock.EXTRA_MESSAGE, title);
-                intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-                Context context = getContext();
-                if (context != null && intent.resolveActivity(context.getPackageManager()) != null) {
-                    context.startActivity(intent);
-                }
-            }
-            JSObject res = new JSObject();
-            res.put("success", true);
-            call.resolve(res);
-        } catch (Exception err) {
-            JSObject res = new JSObject();
-            res.put("success", false);
-            call.resolve(res);
+        if (context != null) {
+            AlarmSoundManager.stopAlarm(context, timerId);
         }
+
+        if (nm != null) {
+            nm.cancel(NativeAlarmReceiver.getAlarmNotificationId(timerId));
+            nm.cancel(NativeAlarmReceiver.getCountdownNotificationId(timerId));
+        }
+
+        JSObject res = new JSObject();
+        res.put("success", true);
+        call.resolve(res);
     }
 }
-

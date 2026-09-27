@@ -10,48 +10,58 @@ export interface NativeTimerPluginInterface {
   startCountdownNotification(options: { timerId: string; title: string; targetEndTime: number }): Promise<{ success: boolean; notificationId: number }>;
   cancelCountdownNotification(options: { timerId: string }): Promise<{ success: boolean }>;
   cancelAllCountdowns(): Promise<{ success: boolean }>;
-  setSystemClockTimer(options: { lengthSeconds: number; title: string; skipUi?: boolean }): Promise<{ success: boolean }>;
-  dismissSystemClockTimer(options: { title: string; skipUi?: boolean }): Promise<{ success: boolean }>;
+  triggerAlarm(options: { timerId: string; title?: string }): Promise<{ success: boolean }>;
+  stopAlarm(options: { timerId: string }): Promise<{ success: boolean }>;
+  addListener(
+    eventName: 'onTimerAction',
+    listenerFunc: (data: { action: 'stop' | 'pause' | 'ring'; timerId: string }) => void
+  ): Promise<any>;
 }
 
 export const NativeTimer = registerPlugin<NativeTimerPluginInterface>('NativeTimer');
 
 /**
- * Dispatch an actual timer directly into Android's native Clock app (Samsung Clock / Google Clock)
+ * Trigger native alarm ringtone and heads-up notification on Android
  */
-export async function setNativeSystemClockTimer(lengthSeconds: number, title: string, skipUi: boolean = true): Promise<boolean> {
+export async function triggerNativeAlarmSound(timerId: string, title?: string): Promise<boolean> {
   if (!isNative) return false;
   try {
-    const res = await NativeTimer.setSystemClockTimer({
-      lengthSeconds,
-      title: title || 'Free Form Timer',
-      skipUi
-    });
+    const res = await NativeTimer.triggerAlarm({ timerId, title: title || 'Timer' });
     return res.success;
   } catch (err) {
-    console.warn('Failed to set native system clock timer', err);
+    console.warn('Failed to trigger native alarm sound', err);
     return false;
   }
 }
 
 /**
- * Dismiss/cancel a timer inside Android's native Clock app
+ * Silence native alarm ringtone and dismiss notification
  */
-export async function dismissNativeSystemClockTimer(title: string, skipUi: boolean = true): Promise<boolean> {
+export async function stopNativeAlarmSound(timerId: string = 'default'): Promise<boolean> {
   if (!isNative) return false;
   try {
-    const res = await NativeTimer.dismissSystemClockTimer({
-      title: title || 'Free Form Timer',
-      skipUi
-    });
+    const res = await NativeTimer.stopAlarm({ timerId });
     return res.success;
   } catch (err) {
-    console.warn('Failed to dismiss native system clock timer', err);
+    console.warn('Failed to stop native alarm sound', err);
     return false;
   }
 }
 
-
+/**
+ * Register listener for native notification actions (Stop / Pause / Ring)
+ */
+export function onNativeTimerAction(callback: (data: { action: 'stop' | 'pause' | 'ring'; timerId: string }) => void) {
+  if (!isNative) return () => {};
+  try {
+    const listenerPromise = NativeTimer.addListener('onTimerAction', callback);
+    return () => {
+      listenerPromise.then(handle => handle?.remove?.()).catch(() => {});
+    };
+  } catch {
+    return () => {};
+  }
+}
 
 /**
  * Initialize native device features (Status bar, splash screen, notification channel)
@@ -100,7 +110,6 @@ export async function initNativeApp(): Promise<void> {
     }, 400);
   } catch {}
 }
-
 
 /**
  * Trigger subtle, light crisp tick on normal button presses (replaces heavy vibration)
@@ -175,8 +184,6 @@ function getDeterministicNotifId(idStr: string): number {
   return hash || 1;
 }
 
-const activeSystemTimerKeys = new Set<string>();
-
 /**
  * Schedule a native OS-level alarm notification for a timer and display live countdown chronometer
  */
@@ -187,20 +194,8 @@ export async function scheduleNativeTimerAlarm(timerId: string, title: string, t
   if (targetTimeMs <= Date.now()) return;
 
   const timerTitle = title || 'Timer';
-  const remainingSecs = Math.max(1, Math.round((targetTimeMs - Date.now()) / 1000));
 
-  // 1. Automatically dispatch into Android System Clock (Samsung Clock / Google Clock)
-  // This automatically activates:
-  // - The purple dynamic status bar pill (One UI Live Notification chip)
-  // - The lock screen "Live notification" widget with Pause/Cancel controls
-  // - The floating full-screen alarm modal with system ringtone when expired
-  const timerRunKey = `${timerId}_${Math.floor(targetTimeMs / 5000)}`;
-  if (!activeSystemTimerKeys.has(timerRunKey)) {
-    activeSystemTimerKeys.add(timerRunKey);
-    setNativeSystemClockTimer(remainingSecs, timerTitle, true).catch(() => {});
-  }
-
-  // 2. Start live countdown chronometer notification in notification shade
+  // 1. Start live countdown chronometer notification in notification shade & lock screen
   try {
     await NativeTimer.startCountdownNotification({
       timerId,
@@ -211,7 +206,7 @@ export async function scheduleNativeTimerAlarm(timerId: string, title: string, t
     console.warn('NativeTimer chronometer notification failed', err);
   }
 
-  // 3. Schedule completion alarm notification
+  // 2. Schedule LocalNotifications backup for timer finished
   try {
     const notifId = getDeterministicNotifId(`timer_${timerId}`);
 
@@ -241,20 +236,15 @@ export async function scheduleNativeTimerAlarm(timerId: string, title: string, t
 /**
  * Cancel a scheduled native timer alarm and remove live countdown chronometer
  */
-export async function cancelNativeTimerAlarm(timerId: string, title?: string): Promise<void> {
+export async function cancelNativeTimerAlarm(timerId: string): Promise<void> {
   if (!isNative) return;
 
-  // 1. Dismiss System Clock timer if active
-  if (title) {
-    dismissNativeSystemClockTimer(title, true).catch(() => {});
-  }
-
-  // 2. Cancel live countdown chronometer notification
+  // 1. Cancel live countdown chronometer notification & alarm sound
   try {
     await NativeTimer.cancelCountdownNotification({ timerId });
   } catch {}
 
-  // 3. Cancel scheduled alarm
+  // 2. Cancel scheduled alarm
   try {
     const notifId = getDeterministicNotifId(`timer_${timerId}`);
     await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
@@ -262,7 +252,6 @@ export async function cancelNativeTimerAlarm(timerId: string, title?: string): P
     console.warn('Failed to cancel native timer alarm', err);
   }
 }
-
 
 /**
  * Schedule a native OS-level alarm notification for a reminder
@@ -311,4 +300,3 @@ export async function cancelNativeReminderAlarm(reminderId: string): Promise<voi
     console.warn('Failed to cancel native reminder alarm', err);
   }
 }
-

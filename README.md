@@ -46,8 +46,10 @@ Most note apps force you into one of two extremes:
 * **Feed Reveal Toggle**: A 1-click banner above your notes reveals hidden items whenever you want to inspect them without digging through settings.
 
 ### 4. 📱 Native Mobile PWA & Android APK Polish
-* **Live Android Chronometer Countdown Notifications**: Running timers display an active, persistent notification in the Android notification shade and lock screen with a native live ticking countdown chronometer (powered by `NativeTimerPlugin`), seamlessly transitioning to a high-priority heads-up alarm when completed.
-* **Direct Android Clock App Integration**: Push any timer straight into your phone's native Clock app (Samsung Clock / Google Clock) using `AlarmClock.ACTION_SET_TIMER` with a single tap.
+* **First-Party Native Android Timer Engine & Sticky Chronometer**: Running timers display an active, persistent notification in the Android notification shade and lock screen with a native live ticking chronometer (`setUsesChronometer(true)`, `setChronometerCountDown(true)`). It is sticky (`setOngoing(true)`, `FLAG_NO_CLEAR`), meaning it stays pinned even if you tap "Clear all notifications".
+* **Interactive Lock-Screen Controls**: Notification cards on the lock screen feature direct `[⏸ Pause]` and `[⏹ Stop]` actions that communicate natively back to the WebSocket engine.
+* **OS-Level System Alarm Ringtone & Heads-Up Modal**: When the timer expires, `AlarmManager` triggers a high-priority heads-up alert (`setFullScreenIntent`) that wakes the screen and loops your phone's actual system alarm ringtone (`RingtoneManager.TYPE_ALARM`) and custom vibration pattern until stopped.
+* **100% True Bi-Directional Cross-Device WebSocket Sync**: Dismissing or pausing the alarm on your phone immediately silences your desktop and laptop screens via WebSockets; stopping the timer on desktop or web instantly silences the phone ringtone and clears the notification.
 * **Zero Status Bar Overlap**: Native status bar overlay is disabled (`overlay: false`) and coupled with dynamic CSS safe-area padding (`env(safe-area-inset-top)`), guaranteeing the Android clock, battery, and notification bar never overlap navbar icons or titles.
 * **Live Top Bar Countdown Ticker**: Active timers update second-by-second directly inside the top navbar pill without needing to open the timers modal.
 * **Refined Tactile Haptics**: Subtle, ultra-light mechanical tick on button and tab taps (`selectionChanged`), gentle bump on counter tallies (`ImpactStyle.Light`), and firm pulses on deletions and alarms.
