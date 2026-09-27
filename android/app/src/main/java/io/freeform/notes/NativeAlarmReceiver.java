@@ -21,7 +21,9 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
     public static final String ACTION_ALARM_DISMISS = "io.freeform.notes.ACTION_ALARM_DISMISS";
 
     public static final String ALARM_CHANNEL_ID = "timer_alarms";
-    public static final String COUNTDOWN_CHANNEL_ID = "timer_countdown_channel";
+    // v2: renamed from "timer_countdown_channel" (was IMPORTANCE_LOW, cached by Android).
+    // Android does not allow changing importance after channel creation — new ID forces fresh creation.
+    public static final String COUNTDOWN_CHANNEL_ID = "timer_countdown_v2";
     public static final int ALARM_NOTIFICATION_BASE_ID = 990000;
     public static final int COUNTDOWN_NOTIFICATION_BASE_ID = 880000;
 
@@ -40,9 +42,13 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
 
-            // Ongoing countdown channel
-            // IMPORTANCE_DEFAULT is needed for One UI "Live Notification" at-a-glance lock screen widget.
-            // IMPORTANCE_LOW would suppress it from appearing as a Live Activity on lock screen.
+            // Delete the old IMPORTANCE_LOW channel so it stops showing as "Silent" in settings.
+            // This is safe — Android will auto-cancel any active notifications on the deleted channel.
+            nm.deleteNotificationChannel("timer_countdown_channel");
+
+            // Countdown channel v2: IMPORTANCE_DEFAULT qualifies for One UI "At a Glance"
+            // live notification at the bottom of the lock screen.
+            // Silent + no vibration because we use AlarmManager for the actual alarm sound.
             NotificationChannel countdownChannel = new NotificationChannel(
                 COUNTDOWN_CHANNEL_ID,
                 "Active Timer Countdowns",
@@ -55,7 +61,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             countdownChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             nm.createNotificationChannel(countdownChannel);
 
-            // High importance alarm channel for the "Timer Finished" heads-up
+            // High importance alarm channel for the "Timer Finished" alarm notification
             NotificationChannel alarmChannel = new NotificationChannel(
                 ALARM_CHANNEL_ID,
                 "Timers & Reminders",
@@ -71,6 +77,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
                 alarmChannel.setBypassDnd(true);
             }
             nm.createNotificationChannel(alarmChannel);
+
         }
     }
 
