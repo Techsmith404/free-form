@@ -21,21 +21,10 @@ export interface NativeTimerPluginInterface {
 export const NativeTimer = registerPlugin<NativeTimerPluginInterface>('NativeTimer');
 
 /**
- * Trigger native alarm ringtone and heads-up notification on Android
- */
-export async function triggerNativeAlarmSound(timerId: string, title?: string): Promise<boolean> {
-  if (!isNative) return false;
-  try {
-    const res = await NativeTimer.triggerAlarm({ timerId, title: title || 'Timer' });
-    return res.success;
-  } catch (err) {
-    console.warn('Failed to trigger native alarm sound', err);
-    return false;
-  }
-}
-
-/**
- * Silence native alarm ringtone and dismiss notification
+ * Stop native alarm ringtone and dismiss alarm notifications.
+ * Called when:
+ * - User taps "Stop Alarm" in the in-app modal
+ * - A TIMER_DISMISSED event comes in from another device via WebSocket
  */
 export async function stopNativeAlarmSound(timerId: string = 'default'): Promise<boolean> {
   if (!isNative) return false;
@@ -49,9 +38,10 @@ export async function stopNativeAlarmSound(timerId: string = 'default'): Promise
 }
 
 /**
- * Register listener for native notification actions (Stop / Pause / Ring)
+ * Register a listener for actions from native notification buttons (Stop / Pause / Ring).
+ * Returns a cleanup function that removes the listener on unmount.
  */
-export function onNativeTimerAction(callback: (data: { action: 'stop' | 'pause' | 'ring'; timerId: string }) => void) {
+export function onNativeTimerAction(callback: (data: { action: 'stop' | 'pause' | 'ring'; timerId: string }) => void): () => void {
   if (!isNative) return () => {};
   try {
     const listenerPromise = NativeTimer.addListener('onTimerAction', callback);
@@ -70,7 +60,6 @@ export async function initNativeApp(): Promise<void> {
   if (!isNative) return;
 
   try {
-    // 1. Configure status bar - prevent overlaying web content
     await StatusBar.setStyle({ style: Style.Dark });
     await StatusBar.setBackgroundColor({ color: '#161A25' });
     await StatusBar.setOverlaysWebView({ overlay: false });
@@ -79,12 +68,11 @@ export async function initNativeApp(): Promise<void> {
   }
 
   try {
-    // 2. Create high-importance notification channel on Android for alarms
     await LocalNotifications.createChannel({
       id: 'timer_alarms',
       name: 'Timers & Reminders',
       description: 'High-priority notifications for Free Form timers and reminders',
-      importance: 5, // High / Heads-up
+      importance: 5, // IMPORTANCE_HIGH
       visibility: 1, // Public on lock screen
       vibration: true,
       lights: true,
@@ -95,14 +83,12 @@ export async function initNativeApp(): Promise<void> {
   }
 
   try {
-    // 3. Request notification permissions for timer alarms
     await LocalNotifications.requestPermissions();
   } catch (err) {
     console.warn('Native notification permission request failed', err);
   }
 
   try {
-    // 4. Hide splash screen after brief load
     setTimeout(async () => {
       try {
         await SplashScreen.hide();
@@ -111,9 +97,7 @@ export async function initNativeApp(): Promise<void> {
   } catch {}
 }
 
-/**
- * Trigger subtle, light crisp tick on normal button presses (replaces heavy vibration)
- */
+/** Ultra-light mechanical tick on UI interactions */
 export async function hapticTap(): Promise<void> {
   try {
     if (isNative) {
@@ -124,9 +108,7 @@ export async function hapticTap(): Promise<void> {
   } catch {}
 }
 
-/**
- * Trigger medium haptic bump on counter increments, timers, or toggles
- */
+/** Gentle bump on counter tally clicks */
 export async function hapticMedium(): Promise<void> {
   try {
     if (isNative) {
@@ -137,9 +119,7 @@ export async function hapticMedium(): Promise<void> {
   } catch {}
 }
 
-/**
- * Trigger firm haptic feedback on delete or important alerts
- */
+/** Firm pulse on deletions / important actions */
 export async function hapticHeavy(): Promise<void> {
   try {
     if (isNative) {
@@ -150,9 +130,7 @@ export async function hapticHeavy(): Promise<void> {
   } catch {}
 }
 
-/**
- * Trigger success notification haptic on save/complete
- */
+/** Multi-pulse success haptic on form completion / save */
 export async function hapticSuccess(): Promise<void> {
   try {
     if (isNative) {
@@ -163,9 +141,7 @@ export async function hapticSuccess(): Promise<void> {
   } catch {}
 }
 
-/**
- * Trigger warning/alert haptic for ringing timers and triggered reminders
- */
+/** Warning pulse haptic for triggered reminders (non-alarm) */
 export async function hapticWarning(): Promise<void> {
   try {
     if (isNative) {
@@ -185,7 +161,9 @@ function getDeterministicNotifId(idStr: string): number {
 }
 
 /**
- * Schedule a native OS-level alarm notification for a timer and display live countdown chronometer
+ * Schedule a native OS-level live countdown notification for a running timer.
+ * This posts the chronometer notification and schedules the AlarmManager trigger.
+ * Does NOT schedule a separate LocalNotifications completion — the AlarmManager handles that.
  */
 export async function scheduleNativeTimerAlarm(timerId: string, title: string, triggerDate: Date): Promise<void> {
   if (!isNative) return;
@@ -195,7 +173,8 @@ export async function scheduleNativeTimerAlarm(timerId: string, title: string, t
 
   const timerTitle = title || 'Timer';
 
-  // 1. Start live countdown chronometer notification in notification shade & lock screen
+  // Start the live countdown chronometer notification in the notification shade & lock screen.
+  // The plugin also schedules the AlarmManager to fire NativeAlarmReceiver when time expires.
   try {
     await NativeTimer.startCountdownNotification({
       timerId,
@@ -205,64 +184,30 @@ export async function scheduleNativeTimerAlarm(timerId: string, title: string, t
   } catch (err) {
     console.warn('NativeTimer chronometer notification failed', err);
   }
-
-  // 2. Schedule LocalNotifications backup for timer finished
-  try {
-    const notifId = getDeterministicNotifId(`timer_${timerId}`);
-
-    // Cancel existing scheduled completion alarm first
-    try {
-      await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
-    } catch {}
-
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: notifId,
-          title: '⏰ Timer Finished!',
-          body: `Timer "${timerTitle}" has ended.`,
-          schedule: { at: triggerDate, allowWhileIdle: true },
-          channelId: 'timer_alarms',
-          actionTypeId: 'TIMER_DONE',
-          extra: { timerId }
-        }
-      ]
-    });
-  } catch (err) {
-    console.warn('Failed to schedule native timer alarm', err);
-  }
 }
 
 /**
- * Cancel a scheduled native timer alarm and remove live countdown chronometer
+ * Cancel a scheduled native timer alarm and remove the live countdown notification.
+ * Also cancels the AlarmManager so the alarm won't fire even after deletion.
  */
 export async function cancelNativeTimerAlarm(timerId: string): Promise<void> {
   if (!isNative) return;
 
-  // 1. Cancel live countdown chronometer notification & alarm sound
   try {
     await NativeTimer.cancelCountdownNotification({ timerId });
-  } catch {}
-
-  // 2. Cancel scheduled alarm
-  try {
-    const notifId = getDeterministicNotifId(`timer_${timerId}`);
-    await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
   } catch (err) {
     console.warn('Failed to cancel native timer alarm', err);
   }
 }
 
 /**
- * Schedule a native OS-level alarm notification for a reminder
+ * Schedule a native reminder notification via LocalNotifications.
  */
 export async function scheduleNativeReminderAlarm(reminderId: string, title: string, triggerDate: Date, notes?: string): Promise<void> {
   if (!isNative) return;
 
   try {
     const notifId = getDeterministicNotifId(`reminder_${reminderId}`);
-
-    // Cancel existing one first if any
     try {
       await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
     } catch {}
@@ -288,7 +233,7 @@ export async function scheduleNativeReminderAlarm(reminderId: string, title: str
 }
 
 /**
- * Cancel a scheduled native reminder alarm
+ * Cancel a scheduled native reminder alarm.
  */
 export async function cancelNativeReminderAlarm(reminderId: string): Promise<void> {
   if (!isNative) return;

@@ -10,6 +10,7 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
 
+        <!-- Main Capacitor WebView Activity -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
@@ -27,6 +28,19 @@
 
         </activity>
 
+        <!-- Full-Screen Alarm Activity: shown on top of lock screen when timer expires -->
+        <activity
+            android:name=".AlarmActivity"
+            android:label="Free Form Alarm"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:launchMode="singleTask"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true" />
+
+        <!-- BroadcastReceiver for AlarmManager & Notification Action buttons -->
         <receiver
             android:name=".NativeAlarmReceiver"
             android:exported="false">
@@ -60,4 +74,5 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

@@ -37,6 +37,11 @@ public class NativeTimerPlugin extends Plugin {
         super.handleOnDestroy();
     }
 
+    /**
+     * Sends a timer action event to the JS layer (Capacitor notifyListeners).
+     * Called from BroadcastReceiver and AlarmActivity — these run when app may be open or closed.
+     * When app is NOT open, instance is null and we skip (the AlarmManager already handled it).
+     */
     public static void sendTimerActionEvent(String action, String timerId) {
         if (instance != null) {
             try {
@@ -79,11 +84,18 @@ public class NativeTimerPlugin extends Plugin {
         return 0L;
     }
 
-    private PendingIntent getAlarmPendingIntent(Context context, String timerId, String title, int flags) {
+    /**
+     * Creates a PendingIntent for the AlarmManager to fire ACTION_ALARM_TRIGGER via NativeAlarmReceiver.
+     * IMPORTANT: title is NOT put into the intent for the cancel path — only timerId and action matter
+     * for PendingIntent matching. Title is fetched separately when needed.
+     */
+    private PendingIntent buildAlarmPendingIntent(Context context, String timerId, String title, int flags) {
         Intent alarmIntent = new Intent(context, NativeAlarmReceiver.class);
         alarmIntent.setAction(NativeAlarmReceiver.ACTION_ALARM_TRIGGER);
         alarmIntent.putExtra("timerId", timerId);
-        alarmIntent.putExtra("title", title);
+        if (title != null) {
+            alarmIntent.putExtra("title", title);
+        }
         return PendingIntent.getBroadcast(
             context,
             NativeAlarmReceiver.getAlarmNotificationId(timerId),
@@ -119,9 +131,14 @@ public class NativeTimerPlugin extends Plugin {
             flags |= PendingIntent.FLAG_IMMUTABLE;
         }
 
-        // 1. Schedule native AlarmManager to trigger alarm when time expires
+        // 1. Schedule native AlarmManager to trigger alarm when time expires.
+        //    Uses setExactAndAllowWhileIdle to ensure it fires even in Doze mode.
         if (am != null) {
-            PendingIntent alarmPendingIntent = getAlarmPendingIntent(context, timerId, title, flags);
+            // Cancel any previous alarm for this timer first
+            PendingIntent cancelFlags_pi = buildAlarmPendingIntent(context, timerId, title, flags);
+            am.cancel(cancelFlags_pi);
+
+            PendingIntent alarmPendingIntent = buildAlarmPendingIntent(context, timerId, title, flags);
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetEndTimeMillis, alarmPendingIntent);
@@ -129,18 +146,23 @@ public class NativeTimerPlugin extends Plugin {
                     am.setExact(AlarmManager.RTC_WAKEUP, targetEndTimeMillis, alarmPendingIntent);
                 }
             } catch (SecurityException se) {
-                // If exact alarm permission not granted, fallback to set
+                Log.w(TAG, "Exact alarm permission not granted, falling back to set()", se);
                 am.set(AlarmManager.RTC_WAKEUP, targetEndTimeMillis, alarmPendingIntent);
             }
         }
 
-        // 2. Open App Intent on notification tap
+        // 2. Open App Intent when user taps notification body
         Intent openAppIntent = new Intent(context, MainActivity.class);
         openAppIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         openAppIntent.putExtra("timerId", timerId);
-        PendingIntent openPendingIntent = PendingIntent.getActivity(context, NativeAlarmReceiver.getCountdownNotificationId(timerId), openAppIntent, flags);
+        PendingIntent openPendingIntent = PendingIntent.getActivity(
+            context,
+            NativeAlarmReceiver.getCountdownNotificationId(timerId),
+            openAppIntent,
+            flags
+        );
 
-        // 3. Action: Pause
+        // 3. Action: Pause — sends broadcast to NativeAlarmReceiver
         Intent pauseIntent = new Intent(context, NativeAlarmReceiver.class);
         pauseIntent.setAction(NativeAlarmReceiver.ACTION_TIMER_PAUSE);
         pauseIntent.putExtra("timerId", timerId);
@@ -151,7 +173,7 @@ public class NativeTimerPlugin extends Plugin {
             flags
         );
 
-        // 4. Action: Stop
+        // 4. Action: Stop — sends broadcast to NativeAlarmReceiver
         Intent stopIntent = new Intent(context, NativeAlarmReceiver.class);
         stopIntent.setAction(NativeAlarmReceiver.ACTION_TIMER_STOP);
         stopIntent.putExtra("timerId", timerId);
@@ -162,11 +184,12 @@ public class NativeTimerPlugin extends Plugin {
             flags
         );
 
-        // 5. Build Ongoing Chronometer Notification with Interactive Actions
+        // 5. Build Ongoing Chronometer Notification with live countdown, Pause, and Stop actions.
+        //    PRIORITY_DEFAULT ensures One UI renders this as a Live Notification widget on lock screen.
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NativeAlarmReceiver.COUNTDOWN_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("⏳ " + (title == null || title.trim().isEmpty() ? "Timer" : title))
-            .setContentText("Timer running")
+            .setContentText("Tap to open")
             .setContentIntent(openPendingIntent)
             .setShowWhen(true)
             .setWhen(targetEndTimeMillis)
@@ -175,11 +198,12 @@ public class NativeTimerPlugin extends Plugin {
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .addAction(android.R.drawable.ic_media_pause, "Pause", pausePendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent);
+            .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
 
         int notifId = NativeAlarmReceiver.getCountdownNotificationId(timerId);
         nm.notify(notifId, builder.build());
@@ -197,20 +221,36 @@ public class NativeTimerPlugin extends Plugin {
         NotificationManager nm = getNotificationManager();
         AlarmManager am = getAlarmManager();
 
+        // Cancel the scheduled AlarmManager alarm.
+        // Use FLAG_NO_CREATE so we don't accidentally create a new PendingIntent.
         if (context != null && am != null) {
-            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            int cancelFlags = PendingIntent.FLAG_NO_CREATE;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                flags |= PendingIntent.FLAG_IMMUTABLE;
+                cancelFlags |= PendingIntent.FLAG_IMMUTABLE;
             }
-            PendingIntent pi = getAlarmPendingIntent(context, timerId, "", flags);
-            am.cancel(pi);
+            // We need to match the original intent exactly (same action + timerId extra)
+            Intent alarmIntent = new Intent(context, NativeAlarmReceiver.class);
+            alarmIntent.setAction(NativeAlarmReceiver.ACTION_ALARM_TRIGGER);
+            alarmIntent.putExtra("timerId", timerId);
+            PendingIntent pi = PendingIntent.getBroadcast(
+                context,
+                NativeAlarmReceiver.getAlarmNotificationId(timerId),
+                alarmIntent,
+                cancelFlags
+            );
+            if (pi != null) {
+                am.cancel(pi);
+                pi.cancel();
+            }
         }
 
+        // Cancel both countdown and alarm notifications
         if (nm != null) {
             nm.cancel(NativeAlarmReceiver.getCountdownNotificationId(timerId));
             nm.cancel(NativeAlarmReceiver.getAlarmNotificationId(timerId));
         }
 
+        // Stop any playing alarm audio
         if (context != null) {
             AlarmSoundManager.stopAlarm(context, timerId);
         }
@@ -238,6 +278,10 @@ public class NativeTimerPlugin extends Plugin {
         call.resolve(res);
     }
 
+    /**
+     * Directly trigger the alarm (called from JS when app is foreground and timer expires
+     * before AlarmManager fires — e.g. in dev/short timers).
+     */
     @PluginMethod
     public void triggerAlarm(PluginCall call) {
         Context context = getContext();
@@ -257,6 +301,10 @@ public class NativeTimerPlugin extends Plugin {
         call.resolve(res);
     }
 
+    /**
+     * Stop alarm audio and cancel notifications (called from JS when user taps Stop Alarm
+     * in the in-app modal, or when a cross-device dismiss comes in via WebSocket).
+     */
     @PluginMethod
     public void stopAlarm(PluginCall call) {
         Context context = getContext();

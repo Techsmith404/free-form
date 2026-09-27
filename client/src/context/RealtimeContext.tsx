@@ -4,11 +4,11 @@ import * as api from '../api/index.js';
 import { startAlarmChime, stopAlarmChime } from '../services/audio.js';
 import { syncService } from '../services/syncService.js';
 import {
+  isNative,
   scheduleNativeTimerAlarm,
   cancelNativeTimerAlarm,
   scheduleNativeReminderAlarm,
   cancelNativeReminderAlarm,
-  triggerNativeAlarmSound,
   stopNativeAlarmSound,
   onNativeTimerAction,
   hapticWarning
@@ -61,49 +61,65 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const reconnectTimeoutRef = useRef<number | null>(null);
   const isConnectingRef = useRef(false);
 
+  // Track timers that have been locally dismissed to prevent the JS ticker re-ringing them.
+  // This is critical: without it, the 1-second local ticker re-sets dismissed timers to 'ringing'.
+  const locallyDismissedTimerIds = useRef<Set<string>>(new Set());
+
+  // Ref-based copies of action functions so the native listener useEffect doesn't need
+  // to re-register every time these change (avoids stale closure issues).
+  const dismissTimerRef = useRef<(id: string) => Promise<void>>(async () => {});
+  const pauseTimerRef = useRef<(id: string) => Promise<void>>(async () => {});
+
   // Derive active ringing timer or triggered reminder
   const ringingTimer = timers.find((t) => t.status === 'ringing') || null;
   const triggeredReminder = reminders.find((r) => r.status === 'triggered') || null;
 
-  // Handle Alarm Audio & Haptics: play when anything is ringing/triggered, stop when all are clear
+  // ─── Alarm Audio & Haptics ────────────────────────────────────────────────
+  // On native: AlarmSoundManager (Java) handles audio — don't duplicate with Web Audio.
+  // On web: use the Web Audio synth chime.
   useEffect(() => {
     if (ringingTimer || triggeredReminder) {
-      startAlarmChime();
       hapticWarning();
 
-      if (ringingTimer) {
-        triggerNativeAlarmSound(ringingTimer.id, ringingTimer.title);
-      }
+      if (!isNative) {
+        // Only use Web Audio on non-native (desktop browser, PWA web)
+        startAlarmChime();
 
-      // Show browser system notification if permitted
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const title = ringingTimer ? `⏰ Timer Finished: ${ringingTimer.title}` : `🔔 Reminder: ${triggeredReminder?.title}`;
-        try {
-          new Notification(title, {
-            body: ringingTimer ? 'Tap to open and stop alarm' : (triggeredReminder?.notes || 'Reminder due'),
-            icon: '/pwa-192x192.png',
-            tag: ringingTimer?.id || triggeredReminder?.id
-          });
-        } catch {}
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const notifTitle = ringingTimer
+            ? `⏰ Timer Finished: ${ringingTimer.title}`
+            : `🔔 Reminder: ${triggeredReminder?.title}`;
+          try {
+            new Notification(notifTitle, {
+              body: ringingTimer ? 'Click to stop alarm' : (triggeredReminder?.notes || 'Reminder due'),
+              icon: '/pwa-192x192.png',
+              tag: ringingTimer?.id || triggeredReminder?.id
+            });
+          } catch {}
+        }
       }
+      // On native: NativeAlarmReceiver already played system alarm sound via AlarmManager.
+      // Nothing extra to do here — the alarm is already ringing.
     } else {
       stopAlarmChime();
-      stopNativeAlarmSound();
+      // stopNativeAlarmSound is called explicitly in dismissTimer/deleteTimer/resetTimer
+      // so we don't need it here (avoids double-stopping).
     }
-  }, [ringingTimer, triggeredReminder]);
+  }, [ringingTimer?.id, triggeredReminder?.id]);
 
-  // Synchronize OS-level native alarms whenever timers change
+  // ─── Sync native AlarmManager whenever timer list changes ─────────────────
   useEffect(() => {
     timers.forEach((timer) => {
       if (timer.status === 'running' && timer.target_end_time) {
         scheduleNativeTimerAlarm(timer.id, timer.title, new Date(timer.target_end_time));
-      } else {
+      } else if (timer.status !== 'ringing') {
+        // Don't cancel when ringing — let AlarmSoundManager handle the active alarm state
         cancelNativeTimerAlarm(timer.id);
       }
     });
   }, [timers]);
 
-  // Synchronize OS-level native alarms whenever reminders change
+  // ─── Sync native reminders ────────────────────────────────────────────────
   useEffect(() => {
     reminders.forEach((reminder) => {
       if (reminder.status === 'pending' && reminder.due_date) {
@@ -114,44 +130,45 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, [reminders]);
 
-  // Local fallback ticker for offline / foreground timer expiration
+  // ─── Local fallback ticker (foreground only) ──────────────────────────────
+  // This handles the case where the app is open and the WebSocket server hasn't
+  // broadcast TIMER_RING yet (e.g. offline, or brief network hiccup).
+  // Key fix: skip timers that have been locally dismissed to prevent re-ringing.
   useEffect(() => {
     const runningTimers = timers.filter((t) => t.status === 'running' && t.target_end_time);
     if (runningTimers.length === 0) return;
 
     const interval = setInterval(() => {
       const now = Date.now();
-      let hasRinging = false;
-      timers.forEach((timer) => {
-        if (timer.status === 'running' && timer.target_end_time) {
-          if (new Date(timer.target_end_time).getTime() <= now) {
-            hasRinging = true;
+      setTimers((prev) => {
+        let changed = false;
+        const next = prev.map((t) => {
+          if (
+            t.status === 'running' &&
+            t.target_end_time &&
+            new Date(t.target_end_time).getTime() <= now &&
+            !locallyDismissedTimerIds.current.has(t.id)
+          ) {
+            changed = true;
+            return { ...t, status: 'ringing' as const, remaining_seconds: 0 };
           }
-        }
+          return t;
+        });
+        return changed ? next : prev;
       });
-
-      if (hasRinging) {
-        setTimers((prev) =>
-          prev.map((t) =>
-            t.status === 'running' && t.target_end_time && new Date(t.target_end_time).getTime() <= now
-              ? { ...t, status: 'ringing', remaining_seconds: 0 }
-              : t
-          )
-        );
-      }
     }, 1000);
 
     return () => clearInterval(interval);
   }, [timers]);
 
-  // Request browser notification permission once on initial load
+  // ─── Browser notification permission ──────────────────────────────────────
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
+    if (!isNative && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
   }, []);
 
-  // Fetch initial state via REST & local storage
+  // ─── Data fetching ────────────────────────────────────────────────────────
   const refreshConflicts = useCallback(async () => {
     try {
       const list = await api.fetchConflicts();
@@ -174,7 +191,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  // Connect WebSocket function
+  // ─── WebSocket connection ─────────────────────────────────────────────────
   const connectRef = useRef<() => void>(() => {});
 
   const manualReconnect = useCallback(() => {
@@ -187,9 +204,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       socketRef.current.onclose = null;
       socketRef.current.onerror = null;
       socketRef.current.onmessage = null;
-      try {
-        socketRef.current.close();
-      } catch {}
+      try { socketRef.current.close(); } catch {}
       socketRef.current = null;
     }
     setIsConnecting(true);
@@ -200,21 +215,20 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     connectRef.current();
   }, [refreshState]);
 
-  // Connect WebSocket
   useEffect(() => {
     let unmounted = false;
 
     function connect() {
       if (unmounted) return;
-      if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
-        return;
-      }
+      if (socketRef.current && (
+        socketRef.current.readyState === WebSocket.OPEN ||
+        socketRef.current.readyState === WebSocket.CONNECTING
+      )) return;
 
       setIsConnecting(true);
       isConnectingRef.current = true;
 
       const wsUrl = api.getWebSocketUrl();
-
       try {
         const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
@@ -244,18 +258,14 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setIsConnecting(false);
           isConnectingRef.current = false;
           setReconnectAttempt((prev) => prev + 1);
-
-          // Retry every 3 seconds
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = window.setTimeout(connect, 3000);
         };
 
         ws.onerror = () => {
-          try {
-            ws.close();
-          } catch {}
+          try { ws.close(); } catch {}
         };
-      } catch (err) {
+      } catch {
         setIsConnected(false);
         setIsConnecting(false);
         isConnectingRef.current = false;
@@ -268,11 +278,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshState();
     connect();
 
-    // Reconnect immediately when browser comes back online
-    const handleOnline = () => {
-      refreshState();
-      manualReconnect();
-    };
+    const handleOnline = () => { refreshState(); manualReconnect(); };
     window.addEventListener('online', handleOnline);
 
     return () => {
@@ -281,47 +287,49 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (socketRef.current) socketRef.current.close();
       stopAlarmChime();
-      stopNativeAlarmSound();
     };
   }, [refreshState, manualReconnect]);
 
+  // ─── Realtime event handler ────────────────────────────────────────────────
   const handleRealtimeEvent = (event: RealtimeEvent) => {
     switch (event.type) {
       case 'SYNC_STATE':
         setTimers(event.payload.timers);
         setReminders(event.payload.reminders);
-        if (event.payload.conflicts) {
-          setConflicts(event.payload.conflicts);
-        }
+        if (event.payload.conflicts) setConflicts(event.payload.conflicts);
         break;
 
       case 'TIMER_UPDATED':
         setTimers((prev) => {
-          const index = prev.findIndex((t) => t.id === event.payload.timer.id);
-          if (index >= 0) {
+          const idx = prev.findIndex((t) => t.id === event.payload.timer.id);
+          if (idx >= 0) {
             const next = [...prev];
-            next[index] = event.payload.timer;
+            next[idx] = event.payload.timer;
             return next;
           }
           return [event.payload.timer, ...prev];
         });
+        // If this update transitions the timer out of ringing, silence native audio
         if (event.payload.timer.status !== 'ringing') {
           stopNativeAlarmSound(event.payload.timer.id);
         }
         break;
 
       case 'TIMER_DELETED':
+        // Timer deleted — cancel any pending alarm and silence audio
         stopNativeAlarmSound(event.payload.timerId);
+        cancelNativeTimerAlarm(event.payload.timerId);
         setTimers((prev) => prev.filter((t) => t.id !== event.payload.timerId));
         break;
 
       case 'TIMER_RING':
-        triggerNativeAlarmSound(event.payload.timer.id, event.payload.timer.title);
+        // Server confirmed timer has expired — update state and trigger native alarm
+        // (on native, AlarmManager already fired NativeAlarmReceiver independently)
         setTimers((prev) => {
-          const index = prev.findIndex((t) => t.id === event.payload.timer.id);
-          if (index >= 0) {
+          const idx = prev.findIndex((t) => t.id === event.payload.timer.id);
+          if (idx >= 0) {
             const next = [...prev];
-            next[index] = event.payload.timer;
+            next[idx] = event.payload.timer;
             return next;
           }
           return [event.payload.timer, ...prev];
@@ -329,6 +337,9 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         break;
 
       case 'TIMER_DISMISSED':
+        // A device dismissed the timer — mark locally dismissed so our ticker won't re-ring it,
+        // then silence native audio.
+        locallyDismissedTimerIds.current.add(event.payload.timerId);
         stopNativeAlarmSound(event.payload.timerId);
         setTimers((prev) =>
           prev.map((t) => (t.id === event.payload.timerId ? { ...t, status: 'dismissed' } : t))
@@ -337,10 +348,10 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       case 'REMINDER_UPDATED':
         setReminders((prev) => {
-          const index = prev.findIndex((r) => r.id === event.payload.reminder.id);
-          if (index >= 0) {
+          const idx = prev.findIndex((r) => r.id === event.payload.reminder.id);
+          if (idx >= 0) {
             const next = [...prev];
-            next[index] = event.payload.reminder;
+            next[idx] = event.payload.reminder;
             return next;
           }
           return [...prev, event.payload.reminder];
@@ -353,10 +364,10 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       case 'REMINDER_TRIGGER':
         setReminders((prev) => {
-          const index = prev.findIndex((r) => r.id === event.payload.reminder.id);
-          if (index >= 0) {
+          const idx = prev.findIndex((r) => r.id === event.payload.reminder.id);
+          if (idx >= 0) {
             const next = [...prev];
-            next[index] = event.payload.reminder;
+            next[idx] = event.payload.reminder;
             return next;
           }
           return [...prev, event.payload.reminder];
@@ -379,12 +390,13 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Actions
+  // ─── Timer Actions ─────────────────────────────────────────────────────────
   const createTimer = async (data: { title: string; duration_seconds: number; notebook_id?: string | null; auto_start?: boolean }) => {
     return api.createTimer(data);
   };
 
   const startTimer = async (id: string) => {
+    locallyDismissedTimerIds.current.delete(id); // allow re-ringing if restarted
     await api.startTimer(id);
   };
 
@@ -393,39 +405,67 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const resetTimer = async (id: string) => {
-    stopNativeAlarmSound(id);
+    locallyDismissedTimerIds.current.delete(id);
+    await stopNativeAlarmSound(id);
     await api.resetTimer(id);
   };
 
   const dismissTimer = async (id: string) => {
-    stopNativeAlarmSound(id);
+    // Mark as locally dismissed FIRST — before any async calls — so the 1-second ticker
+    // cannot fire and re-ring this timer between now and when the server state updates.
+    locallyDismissedTimerIds.current.add(id);
+
+    // Immediately silence native audio (phone ringtone / vibration)
+    await stopNativeAlarmSound(id);
+
+    // Optimistically update local state so the alarm modal disappears instantly
+    setTimers((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, status: 'dismissed' } : t))
+    );
+
+    // Send dismiss to server (which will broadcast TIMER_DISMISSED to all devices)
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'DISMISS_TIMER', timerId: id }));
     }
-    await api.dismissTimer(id);
+    try {
+      await api.dismissTimer(id);
+    } catch (err) {
+      console.warn('dismissTimer REST call failed:', err);
+    }
   };
 
   const deleteTimer = async (id: string) => {
-    stopNativeAlarmSound(id);
+    locallyDismissedTimerIds.current.add(id);
+    await stopNativeAlarmSound(id);
+    await cancelNativeTimerAlarm(id);
     await api.deleteTimer(id);
   };
 
-  // Listen for native notification actions (e.g. tapping Stop or Pause on lock screen / notification shade)
+  // ─── Native Notification Action Listener ──────────────────────────────────
+  // Keep refs up-to-date so the stable listener closure always calls the latest version
+  dismissTimerRef.current = dismissTimer;
+  pauseTimerRef.current = pauseTimer;
+
   useEffect(() => {
     const cleanup = onNativeTimerAction(({ action, timerId }) => {
       if (action === 'stop') {
-        dismissTimer(timerId);
+        // User tapped "Stop" or "Stop Alarm" on the notification / AlarmActivity
+        dismissTimerRef.current(timerId);
       } else if (action === 'pause') {
-        pauseTimer(timerId);
+        pauseTimerRef.current(timerId);
       } else if (action === 'ring') {
-        setTimers((prev) =>
-          prev.map((t) => (t.id === timerId ? { ...t, status: 'ringing', remaining_seconds: 0 } : t))
-        );
+        // AlarmManager fired while app is in foreground — update state to show alarm modal
+        if (!locallyDismissedTimerIds.current.has(timerId)) {
+          setTimers((prev) =>
+            prev.map((t) => (t.id === timerId ? { ...t, status: 'ringing', remaining_seconds: 0 } : t))
+          );
+        }
       }
     });
     return cleanup;
-  }, []);
+  }, []); // stable — uses refs, not closures
 
+  // ─── Reminder Actions ──────────────────────────────────────────────────────
   const createReminder = async (data: { title: string; notes?: string; due_date: string; priority?: 'low' | 'normal' | 'high'; notebook_id?: string | null }) => {
     return api.createReminder(data);
   };
@@ -494,8 +534,6 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 export const useRealtime = () => {
   const context = useContext(RealtimeContext);
-  if (!context) {
-    throw new Error('useRealtime must be used within a RealtimeProvider');
-  }
+  if (!context) throw new Error('useRealtime must be used within a RealtimeProvider');
   return context;
 };

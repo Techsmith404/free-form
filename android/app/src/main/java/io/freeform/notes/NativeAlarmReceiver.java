@@ -40,11 +40,13 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
 
-            // Ongoing countdown channel (Visible in shade & lock screen, silent, live chronometer)
+            // Ongoing countdown channel
+            // IMPORTANCE_DEFAULT is needed for One UI "Live Notification" at-a-glance lock screen widget.
+            // IMPORTANCE_LOW would suppress it from appearing as a Live Activity on lock screen.
             NotificationChannel countdownChannel = new NotificationChannel(
                 COUNTDOWN_CHANNEL_ID,
                 "Active Timer Countdowns",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             );
             countdownChannel.setDescription("Live countdown timer in notification shade and lock screen");
             countdownChannel.setShowBadge(false);
@@ -53,7 +55,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             countdownChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             nm.createNotificationChannel(countdownChannel);
 
-            // High importance alarm channel with full-screen and public visibility
+            // High importance alarm channel for the "Timer Finished" heads-up
             NotificationChannel alarmChannel = new NotificationChannel(
                 ALARM_CHANNEL_ID,
                 "Timers & Reminders",
@@ -85,7 +87,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (ACTION_ALARM_TRIGGER.equals(action)) {
-            // 1. Wake screen briefly for heads-up alarm
+            // 1. Acquire wake lock to turn screen on
             try {
                 PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
                 if (pm != null) {
@@ -93,36 +95,46 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
                         PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
                         "FreeForm:AlarmWakeLock"
                     );
-                    wakeLock.acquire(10000); // 10 seconds wake
+                    wakeLock.acquire(15000); // 15 seconds
                 }
             } catch (Exception e) {
                 Log.e(TAG, "WakeLock failed", e);
             }
 
-            // 2. Play Alarm Sound and Vibrate
+            // 2. Play native alarm ringtone + vibration
             AlarmSoundManager.playAlarm(context, timerId);
 
-            // 3. Cancel ongoing countdown notification
+            // 3. Cancel the live countdown notification
             if (nm != null) {
                 nm.cancel(getCountdownNotificationId(timerId));
             }
 
-            // 4. Create Alarm Channels
+            // 4. Ensure alarm channels exist
             createChannels(context);
-
-            // 5. Post Heads-Up / Full Screen Alarm Notification with Dismiss Action
-            Intent openIntent = new Intent(context, MainActivity.class);
-            openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-            openIntent.putExtra("timerId", timerId);
-            openIntent.putExtra("alarmTriggered", true);
 
             int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 pendingFlags |= PendingIntent.FLAG_IMMUTABLE;
             }
-            PendingIntent openPendingIntent = PendingIntent.getActivity(context, getAlarmNotificationId(timerId), openIntent, pendingFlags);
 
-            // Dismiss Alarm Action Intent
+            // 5. Build a full-screen intent that opens AlarmActivity (NOT MainActivity).
+            //    AlarmActivity is styled as a transparent overlay over the lock screen.
+            Intent alarmActivityIntent = new Intent(context, AlarmActivity.class);
+            alarmActivityIntent.setFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK |
+                Intent.FLAG_ACTIVITY_SINGLE_TOP |
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+            );
+            alarmActivityIntent.putExtra(AlarmActivity.EXTRA_TIMER_ID, timerId);
+            alarmActivityIntent.putExtra(AlarmActivity.EXTRA_TIMER_TITLE, title);
+            PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(
+                context,
+                getAlarmNotificationId(timerId),
+                alarmActivityIntent,
+                pendingFlags
+            );
+
+            // 6. Dismiss action from notification shade (without opening full-screen activity)
             Intent dismissIntent = new Intent(context, NativeAlarmReceiver.class);
             dismissIntent.setAction(ACTION_ALARM_DISMISS);
             dismissIntent.putExtra("timerId", timerId);
@@ -133,12 +145,13 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
                 pendingFlags
             );
 
+            // 7. Post the alarm notification with setFullScreenIntent pointing at AlarmActivity
             NotificationCompat.Builder alarmBuilder = new NotificationCompat.Builder(context, ALARM_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("⏰ Timer Finished!")
-                .setContentText(title + " has ended.")
-                .setContentIntent(openPendingIntent)
-                .setFullScreenIntent(openPendingIntent, true)
+                .setContentText("\"" + title + "\" has ended.")
+                .setContentIntent(fullScreenPendingIntent)
+                .setFullScreenIntent(fullScreenPendingIntent, true)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -150,18 +163,28 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
                 nm.notify(getAlarmNotificationId(timerId), alarmBuilder.build());
             }
 
+            // 8. Also launch the AlarmActivity directly for immediate full-screen display
+            try {
+                context.startActivity(alarmActivityIntent);
+            } catch (Exception e) {
+                Log.e(TAG, "Could not start AlarmActivity", e);
+            }
+
+            // 9. Notify JS bridge that alarm is ringing (so in-app state updates if app is open)
             NativeTimerPlugin.sendTimerActionEvent("ring", timerId);
 
         } else if (ACTION_ALARM_DISMISS.equals(action)) {
-            // Stop alarm sound and cancel notification
+            // Triggered from notification shade "Stop Alarm" action button
             AlarmSoundManager.stopAlarm(context, timerId);
             if (nm != null) {
                 nm.cancel(getAlarmNotificationId(timerId));
                 nm.cancel(getCountdownNotificationId(timerId));
             }
+            // Notify JS bridge → dismissTimer → cross-device WebSocket broadcast
             NativeTimerPlugin.sendTimerActionEvent("stop", timerId);
 
         } else if (ACTION_TIMER_STOP.equals(action)) {
+            // Triggered from countdown notification "Stop" action button
             AlarmSoundManager.stopAlarm(context, timerId);
             if (nm != null) {
                 nm.cancel(getCountdownNotificationId(timerId));
@@ -170,6 +193,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             NativeTimerPlugin.sendTimerActionEvent("stop", timerId);
 
         } else if (ACTION_TIMER_PAUSE.equals(action)) {
+            // Triggered from countdown notification "Pause" action button
             AlarmSoundManager.stopAlarm(context, timerId);
             if (nm != null) {
                 nm.cancel(getCountdownNotificationId(timerId));
