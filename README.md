@@ -46,9 +46,10 @@ Most note apps force you into one of two extremes:
 * **Feed Reveal Toggle**: A 1-click banner above your notes reveals hidden items whenever you want to inspect them without digging through settings.
 
 ### 4. 📱 Native Mobile PWA & Android APK Polish
+* **Live Android Chronometer Countdown Notifications**: Running timers display an active, persistent notification in the Android notification shade and lock screen with a native live ticking countdown chronometer (powered by `NativeTimerPlugin`), seamlessly transitioning to a high-priority heads-up alarm when completed.
 * **Zero Status Bar Overlap**: Native status bar overlay is disabled (`overlay: false`) and coupled with dynamic CSS safe-area padding (`env(safe-area-inset-top)`), guaranteeing the Android clock, battery, and notification bar never overlap navbar icons or titles.
 * **Live Top Bar Countdown Ticker**: Active timers update second-by-second directly inside the top navbar pill without needing to open the timers modal.
-* **Full Tactile Haptics**: Native vibration feedback across the entire app (tabs, quick-add FAB, counter tally clicks, favorite/pin actions, timer triggers) using `@capacitor/haptics` with seamless web vibration fallbacks.
+* **Refined Tactile Haptics**: Subtle, ultra-light mechanical tick on button and tab taps (`selectionChanged`), gentle bump on counter tallies (`ImpactStyle.Light`), and firm pulses on deletions and alarms.
 * **OS-Level Background Timer & Reminder Alarms**: Android APK utilizes `@capacitor/local-notifications` with high-importance channels (`allowWhileIdle: true`) to ring alerts and vibrate even when the app is backgrounded or the phone is locked.
 * **Zero Browser Popups (Native Confirm Dialogs)**: All `confirm()` popups are replaced with sleek, contextual in-app confirmation sheets on mobile and centered modals on desktop with danger/warning badges.
 * **Fixed 5-Tab Bottom Navigation**: Native app navigation on mobile with active indicator pills, 56×56px FAB, and proper safe-area insets. Direct access to All Notes, Notebooks, Quick Add (+), Templates, and Favorites.

@@ -442,7 +442,15 @@ The inner screen of foldables like the Z Fold 6 is ~360px wide — between `sm` 
 * `-webkit-overflow-scrolling: touch` enables momentum scrolling on iOS.
 * `font-size: max(16px, 1em)` on inputs prevents iOS auto-zoom on focus.
 * Active states: `active:scale-[0.98]` on cards, `active:scale-95` on buttons for tactile feedback.
-* **Native Haptic Feedback Engine (`services/native.ts`):** Direct tactile physical feedback using `@capacitor/haptics` with seamless `navigator.vibrate` web fallback. Integrated on bottom navigation tabs, FAB quick-add, counter increments/decrements, item pins/favorites, form runner completions, timer play/pause/reset, and alarm alerts (`hapticTap()`, `hapticMedium()`, `hapticHeavy()`, `hapticSuccess()`, `hapticWarning()`).
+* **Refined Haptic Feedback Hierarchy (`services/native.ts`):** 
+  * `hapticTap()`: Utilizes `Haptics.selectionChanged()` (with 6ms web vibration fallback) for an ultra-light, crisp mechanical tick on general UI interactions (tabs, FAB, buttons, filters, toggles), preventing strong buzzy vibrations on everyday taps.
+  * `hapticMedium()`: Utilizes `Haptics.impact({ style: ImpactStyle.Light })` (15ms fallback) for counter tally clicks and step increments.
+  * `hapticHeavy()`: Utilizes `Haptics.impact({ style: ImpactStyle.Medium })` (30ms fallback) for destructive deletions and archive actions.
+  * `hapticSuccess()` / `hapticWarning()`: Multi-pulse patterns for form runner completion and ringing timer/reminder alarms.
+* **Native Live Chronometer Countdown Notifications (`NativeTimerPlugin.java`):**
+  * Implemented a custom Android Capacitor plugin (`NativeTimer`) leveraging Android's native `NotificationCompat.Builder.setUsesChronometer(true)` and `setChronometerCountDown(true)` with `setWhen(targetEndTimeMillis)` on a silent ongoing channel (`timer_countdown_channel`).
+  * As soon as a timer starts, Android SystemUI renders a live, second-by-second countdown in the notification shade and lock screen (e.g. `04:59`, `04:58`...) without draining battery or needing JavaScript wakeup loops.
+  * When the timer expires, the ongoing chronometer notification is cleanly dismissed, and the high-priority alarm channel (`timer_alarms`) triggers the completion alert with sound and vibration.
 
 ### 6. Mobile Navbar & Safe Area Insets
 * **Status Bar Non-Overlap:** Explicitly configures `StatusBar.setOverlaysWebView({ overlay: false })` in Capacitor alongside CSS environment safe areas: `pt-[max(env(safe-area-inset-top),0.625rem)]` on `<Navbar>` and `pt-[max(env(safe-area-inset-top),1rem)]` on `<Sidebar>` brand header. This prevents the Android/iOS status bar (clock, battery, Wi-Fi) from overlapping buttons or navigation controls.

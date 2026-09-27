@@ -1,10 +1,18 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export const isNative = Capacitor.isNativePlatform();
+
+export interface NativeTimerPluginInterface {
+  startCountdownNotification(options: { timerId: string; title: string; targetEndTime: number }): Promise<{ success: boolean; notificationId: number }>;
+  cancelCountdownNotification(options: { timerId: string }): Promise<{ success: boolean }>;
+  cancelAllCountdowns(): Promise<{ success: boolean }>;
+}
+
+export const NativeTimer = registerPlugin<NativeTimerPluginInterface>('NativeTimer');
 
 /**
  * Initialize native device features (Status bar, splash screen, notification channel)
@@ -54,41 +62,42 @@ export async function initNativeApp(): Promise<void> {
   } catch {}
 }
 
+
 /**
- * Trigger subtle light haptic feedback on button presses
+ * Trigger subtle, light crisp tick on normal button presses (replaces heavy vibration)
  */
 export async function hapticTap(): Promise<void> {
   try {
     if (isNative) {
-      await Haptics.impact({ style: ImpactStyle.Light });
+      await Haptics.selectionChanged();
     } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(10);
+      navigator.vibrate(6);
     }
   } catch {}
 }
 
 /**
- * Trigger medium haptic feedback on counter increments, timers, or toggles
+ * Trigger medium haptic bump on counter increments, timers, or toggles
  */
 export async function hapticMedium(): Promise<void> {
   try {
     if (isNative) {
-      await Haptics.impact({ style: ImpactStyle.Medium });
+      await Haptics.impact({ style: ImpactStyle.Light });
     } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(25);
+      navigator.vibrate(15);
     }
   } catch {}
 }
 
 /**
- * Trigger heavy haptic feedback on delete or important alerts
+ * Trigger firm haptic feedback on delete or important alerts
  */
 export async function hapticHeavy(): Promise<void> {
   try {
     if (isNative) {
-      await Haptics.impact({ style: ImpactStyle.Heavy });
+      await Haptics.impact({ style: ImpactStyle.Medium });
     } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(45);
+      navigator.vibrate(30);
     }
   } catch {}
 }
@@ -101,7 +110,7 @@ export async function hapticSuccess(): Promise<void> {
     if (isNative) {
       await Haptics.notification({ type: NotificationType.Success });
     } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([15, 60, 20]);
+      navigator.vibrate([10, 40, 15]);
     }
   } catch {}
 }
@@ -114,7 +123,7 @@ export async function hapticWarning(): Promise<void> {
     if (isNative) {
       await Haptics.notification({ type: NotificationType.Warning });
     } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate([40, 100, 40, 100, 40]);
+      navigator.vibrate([30, 80, 30, 80, 30]);
     }
   } catch {}
 }
@@ -128,46 +137,64 @@ function getDeterministicNotifId(idStr: string): number {
 }
 
 /**
- * Schedule a native OS-level alarm notification for a timer
+ * Schedule a native OS-level alarm notification for a timer and display live countdown chronometer
  */
 export async function scheduleNativeTimerAlarm(timerId: string, title: string, triggerDate: Date): Promise<void> {
   if (!isNative) return;
 
+  const targetTimeMs = triggerDate.getTime();
+  if (targetTimeMs <= Date.now()) return;
+
+  // 1. Start live countdown chronometer notification in notification shade
+  try {
+    await NativeTimer.startCountdownNotification({
+      timerId,
+      title: title || 'Timer',
+      targetEndTime: targetTimeMs
+    });
+  } catch (err) {
+    console.warn('NativeTimer chronometer notification failed', err);
+  }
+
+  // 2. Schedule completion alarm notification
   try {
     const notifId = getDeterministicNotifId(`timer_${timerId}`);
 
-    // Cancel existing one first if any
+    // Cancel existing scheduled completion alarm first
     try {
       await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
     } catch {}
 
-    // Only schedule if trigger date is in the future
-    if (triggerDate.getTime() > Date.now()) {
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notifId,
-            title: '⏰ Timer Finished!',
-            body: title ? `Timer "${title}" has ended.` : 'Your timer has finished!',
-            schedule: { at: triggerDate, allowWhileIdle: true },
-            channelId: 'timer_alarms',
-            actionTypeId: 'TIMER_DONE',
-            extra: { timerId }
-          }
-        ]
-      });
-    }
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: notifId,
+          title: '⏰ Timer Finished!',
+          body: title ? `Timer "${title}" has ended.` : 'Your timer has finished!',
+          schedule: { at: triggerDate, allowWhileIdle: true },
+          channelId: 'timer_alarms',
+          actionTypeId: 'TIMER_DONE',
+          extra: { timerId }
+        }
+      ]
+    });
   } catch (err) {
     console.warn('Failed to schedule native timer alarm', err);
   }
 }
 
 /**
- * Cancel a scheduled native timer alarm
+ * Cancel a scheduled native timer alarm and remove live countdown chronometer
  */
 export async function cancelNativeTimerAlarm(timerId: string): Promise<void> {
   if (!isNative) return;
 
+  // 1. Cancel live countdown chronometer notification
+  try {
+    await NativeTimer.cancelCountdownNotification({ timerId });
+  } catch {}
+
+  // 2. Cancel scheduled alarm
   try {
     const notifId = getDeterministicNotifId(`timer_${timerId}`);
     await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
@@ -223,3 +250,4 @@ export async function cancelNativeReminderAlarm(reminderId: string): Promise<voi
     console.warn('Failed to cancel native reminder alarm', err);
   }
 }
+
