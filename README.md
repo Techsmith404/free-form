@@ -53,6 +53,7 @@ Most note apps force you into one of two extremes:
 * **Single-Tap Reliable Stop**: A `locallyDismissedTimerIds` ref in `RealtimeContext` prevents the JS 1-second ticker from re-ringing a dismissed timer. Optimistic local state update ensures the alarm modal closes before the server round-trip.
 * **No Duplicate Notifications**: Single `AlarmManager` + `NativeAlarmReceiver` path — no parallel `LocalNotifications` for timers. One timer = one alarm notification.
 * **Bi-Directional Cross-Device Sync**: Dismissing on any connected device silences all others via WebSocket broadcast. Deleting a timer also cancels its `AlarmManager` entry.
+* **Android 16 Live Updates & Samsung Now Bar Integration**: Running timers host a foreground service (`specialUse`) and request Promoted Ongoing status (`POST_PROMOTED_NOTIFICATIONS`, `setRequestPromotedOngoing`), enabling direct integration with Samsung One UI's Now Bar capsule at the top of the status bar, bottom of the lock screen, and top of the notification drawer.
 * **Audio Isolation**: On native, Web Audio API synthesizer is bypassed — only `AlarmSoundManager.java` plays. On web/PWA, only the Web Audio chime plays. No dual-audio conflict.
 
 * **Zero Status Bar Overlap**: Native status bar overlay is disabled (`overlay: false`) and coupled with dynamic CSS safe-area padding (`env(safe-area-inset-top)`), guaranteeing the Android clock, battery, and notification bar never overlap navbar icons or titles.

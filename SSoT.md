@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.8.1  
-> **Last Updated:** September 27, 2026 — AlarmActivity polished dark-teal design (animated bell, card layout, radial glow); countdown channel renamed to `timer_countdown_v2` (IMPORTANCE_DEFAULT) with auto-deletion of stale `timer_countdown_channel`  
+> **Document Version:** 1.9.0  
+> **Last Updated:** September 27, 2026 — Android 16 Live Updates & Samsung One UI Now Bar Integration: `TimerForegroundService` (`specialUse`), `POST_PROMOTED_NOTIFICATIONS`, `setRequestPromotedOngoing` promotion, lock-screen visibility requirements, and Developer Options gateway documentation  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -675,6 +675,21 @@ On native Android, `NativeAlarmReceiver` plays the system alarm ringtone via `Al
 Registering `onNativeTimerAction` with an empty dependency array (`[]`) means the callback captures `dismissTimer` at mount time — when `socketRef.current` is `null`. Subsequent calls to `dismissTimer` via the listener will attempt to send to a null socket.
 
 **Resolution:** Keep mutable refs `dismissTimerRef.current` and `pauseTimerRef.current` updated on every render (by assigning at the top of the component body). The stable listener (empty `[]`) calls through the ref, always accessing the latest function closure.
+
+### 8. Android 16 Live Updates & Samsung One UI Now Bar Integration
+
+#### Architecture
+The Samsung "Now Bar" (capsule on the lock screen, Always-On Display, status bar chip, and top of notification panel) is Samsung's implementation of the **Android 16 Live Updates (Promoted Ongoing Notifications)** API level 36.
+
+To integrate a third-party app into this surface:
+1. **Manifest Permission:** Declare `<uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />` (non-runtime install permission) and `<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />`.
+2. **Foreground Service:** In Android 14+, live notifications must be hosted by a running `ForegroundService` with `foregroundServiceType="specialUse"` and property `PROPERTY_SPECIAL_USE_FGS_SUBTYPE="Live timer countdown"`. We implemented `TimerForegroundService.java`.
+3. **Notification Builder Promotion:** Must call `setRequestPromotedOngoing(true)` (via reflection/API 36) and set the bundle extra `android.requestPromotedOngoing = true` on the notification.
+4. **Style Compliance:** Must use an approved style (`NotificationCompat.BigTextStyle` or `ProgressStyle`) without custom `RemoteViews`, with `setOngoing(true)`, `setUsesChronometer(true)`, `setChronometerCountDown(true)`, `setCategory(CATEGORY_STOPWATCH)`, and `setVisibility(VISIBILITY_PUBLIC)`.
+5. **Samsung Device Setting Gateways:**
+   - **Show content on Lock Screen:** In app notification settings (or category settings for "Active Timer Countdowns"), `Lock screen` MUST be set to **"Show content"** (not "Hide content"). If set to "Hide content", One UI's Now Bar service explicitly suppresses the capsule from the lock screen.
+   - **Developer Option ("Live notifications for all apps"):** In One UI 8+, Samsung defaults the Now Bar whitelist to select first-party/partner apps. Toggling **Developer Options → "Live notifications for all apps"** enables all compliant Android 16 Live Update notifications to enter the Now Bar capsule and status bar chip.
+
 
 
 

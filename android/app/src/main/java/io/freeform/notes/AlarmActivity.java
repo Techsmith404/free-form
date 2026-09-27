@@ -277,6 +277,9 @@ public class AlarmActivity extends Activity {
         // Stop alarm audio & vibration
         AlarmSoundManager.stopAlarm(this, timerId);
 
+        // Stop foreground countdown service
+        TimerForegroundService.stopService(this);
+
         // Cancel both alarm and countdown notifications
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {

@@ -94,6 +94,9 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (ACTION_ALARM_TRIGGER.equals(action)) {
+            // Stop active countdown foreground service (the timer is done)
+            TimerForegroundService.stopService(context);
+
             // 1. Acquire wake lock to turn screen on
             try {
                 PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
@@ -181,6 +184,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             NativeTimerPlugin.sendTimerActionEvent("ring", timerId);
 
         } else if (ACTION_ALARM_DISMISS.equals(action)) {
+            TimerForegroundService.stopService(context);
             // Triggered from notification shade "Stop Alarm" action button
             AlarmSoundManager.stopAlarm(context, timerId);
             if (nm != null) {
@@ -191,6 +195,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             NativeTimerPlugin.sendTimerActionEvent("stop", timerId);
 
         } else if (ACTION_TIMER_STOP.equals(action)) {
+            TimerForegroundService.stopService(context);
             // Triggered from countdown notification "Stop" action button
             AlarmSoundManager.stopAlarm(context, timerId);
             if (nm != null) {
@@ -200,6 +205,7 @@ public class NativeAlarmReceiver extends BroadcastReceiver {
             NativeTimerPlugin.sendTimerActionEvent("stop", timerId);
 
         } else if (ACTION_TIMER_PAUSE.equals(action)) {
+            TimerForegroundService.stopService(context);
             // Triggered from countdown notification "Pause" action button
             AlarmSoundManager.stopAlarm(context, timerId);
             if (nm != null) {

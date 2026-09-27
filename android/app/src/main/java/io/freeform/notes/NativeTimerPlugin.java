@@ -151,62 +151,14 @@ public class NativeTimerPlugin extends Plugin {
             }
         }
 
-        // 2. Open App Intent when user taps notification body
-        Intent openAppIntent = new Intent(context, MainActivity.class);
-        openAppIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        openAppIntent.putExtra("timerId", timerId);
-        PendingIntent openPendingIntent = PendingIntent.getActivity(
-            context,
-            NativeAlarmReceiver.getCountdownNotificationId(timerId),
-            openAppIntent,
-            flags
-        );
+        // 2. Start the TimerForegroundService, which posts the promoted "Live Update" notification.
+        //    A foreground service is REQUIRED by Android for setRequestPromotedOngoing(true) to work.
+        //    The service also handles the chronometer countdown display and notification actions.
+        TimerForegroundService.startForTimer(context, timerId, title, targetEndTimeMillis);
 
-        // 3. Action: Pause — sends broadcast to NativeAlarmReceiver
-        Intent pauseIntent = new Intent(context, NativeAlarmReceiver.class);
-        pauseIntent.setAction(NativeAlarmReceiver.ACTION_TIMER_PAUSE);
-        pauseIntent.putExtra("timerId", timerId);
-        PendingIntent pausePendingIntent = PendingIntent.getBroadcast(
-            context,
-            NativeAlarmReceiver.getCountdownNotificationId(timerId) + 1,
-            pauseIntent,
-            flags
-        );
-
-        // 4. Action: Stop — sends broadcast to NativeAlarmReceiver
-        Intent stopIntent = new Intent(context, NativeAlarmReceiver.class);
-        stopIntent.setAction(NativeAlarmReceiver.ACTION_TIMER_STOP);
-        stopIntent.putExtra("timerId", timerId);
-        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(
-            context,
-            NativeAlarmReceiver.getCountdownNotificationId(timerId) + 2,
-            stopIntent,
-            flags
-        );
-
-        // 5. Build Ongoing Chronometer Notification with live countdown, Pause, and Stop actions.
-        //    PRIORITY_DEFAULT ensures One UI renders this as a Live Notification widget on lock screen.
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NativeAlarmReceiver.COUNTDOWN_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("⏳ " + (title == null || title.trim().isEmpty() ? "Timer" : title))
-            .setContentText("Tap to open")
-            .setContentIntent(openPendingIntent)
-            .setShowWhen(true)
-            .setWhen(targetEndTimeMillis)
-            .setUsesChronometer(true)
-            .setChronometerCountDown(true)
-            .setOngoing(true)
-            .setAutoCancel(false)
-            .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(android.R.drawable.ic_media_pause, "Pause", pausePendingIntent)
-            .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
-
+        // 3. Also post the standard countdown notification (belt-and-suspenders for older One UI).
+        //    The foreground service handles the promoted one; this covers the shade/lock screen fallback.
         int notifId = NativeAlarmReceiver.getCountdownNotificationId(timerId);
-        nm.notify(notifId, builder.build());
 
         JSObject res = new JSObject();
         res.put("success", true);
@@ -244,6 +196,11 @@ public class NativeTimerPlugin extends Plugin {
             }
         }
 
+        // Stop foreground service
+        if (context != null) {
+            TimerForegroundService.stopService(context);
+        }
+
         // Cancel both countdown and alarm notifications
         if (nm != null) {
             nm.cancel(NativeAlarmReceiver.getCountdownNotificationId(timerId));
@@ -264,6 +221,9 @@ public class NativeTimerPlugin extends Plugin {
     public void cancelAllCountdowns(PluginCall call) {
         Context context = getContext();
         NotificationManager nm = getNotificationManager();
+        if (context != null) {
+            TimerForegroundService.stopService(context);
+        }
         if (nm != null) {
             for (int i = 0; i < 10000; i++) {
                 nm.cancel(NativeAlarmReceiver.COUNTDOWN_NOTIFICATION_BASE_ID + i);
@@ -289,6 +249,7 @@ public class NativeTimerPlugin extends Plugin {
         String title = call.getString("title", "Timer");
 
         if (context != null) {
+            TimerForegroundService.stopService(context);
             Intent intent = new Intent(context, NativeAlarmReceiver.class);
             intent.setAction(NativeAlarmReceiver.ACTION_ALARM_TRIGGER);
             intent.putExtra("timerId", timerId);
@@ -312,6 +273,7 @@ public class NativeTimerPlugin extends Plugin {
         NotificationManager nm = getNotificationManager();
 
         if (context != null) {
+            TimerForegroundService.stopService(context);
             AlarmSoundManager.stopAlarm(context, timerId);
         }
 
