@@ -8,9 +8,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
+import java.util.Locale;
 
 /**
  * Foreground Service for running timer countdowns.
@@ -18,9 +21,12 @@ import androidx.core.app.NotificationCompat;
  * This service is the backbone of the "Live Update" / Now Bar integration:
  * - Runs as a foreground service with FOREGROUND_SERVICE_TYPE_SPECIAL_USE.
  * - Posts a notification requesting Promoted Ongoing status (Android 16 API level 36),
- *   which signals to Samsung One UI 8+ and modern Android to promote it into the
- *   Now Bar (lock screen capsule, Always-on Display, and status bar chip).
- * - Employs setUsesChronometer + setChronometerCountDown for a native ticking countdown.
+ *   which signals to Samsung One UI 8+ to promote it into the Now Bar (lock screen capsule,
+ *   Always-on Display, and status bar chip).
+ * - Dynamically updates contentText every 1 second (e.g. "04:59", "04:58") so Samsung's
+ *   Now Bar capsule (which renders EXTRA_TEXT as its second line) displays the live ticking
+ *   countdown numbers instead of static text.
+ * - Also sets setUsesChronometer + setChronometerCountDown for native chronometer rendering.
  */
 public class TimerForegroundService extends Service {
     private static final String TAG = "TimerForegroundService";
@@ -38,6 +44,13 @@ public class TimerForegroundService extends Service {
     // Android 16 Live Updates promoted ongoing extra key
     public static final String EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing";
 
+    private final Handler tickerHandler = new Handler(Looper.getMainLooper());
+    private Runnable tickerRunnable = null;
+
+    private String currentTimerId = "default";
+    private String currentTitle = "Timer";
+    private long currentTargetEndMs = 0L;
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
@@ -46,14 +59,17 @@ public class TimerForegroundService extends Service {
         if (action == null) return START_NOT_STICKY;
 
         if (ACTION_START.equals(action)) {
-            String timerId   = intent.getStringExtra(EXTRA_TIMER_ID);
-            String title     = intent.getStringExtra(EXTRA_TITLE);
-            long targetEndMs = intent.getLongExtra(EXTRA_END_TIME, 0L);
+            currentTimerId   = intent.getStringExtra(EXTRA_TIMER_ID);
+            currentTitle     = intent.getStringExtra(EXTRA_TITLE);
+            currentTargetEndMs = intent.getLongExtra(EXTRA_END_TIME, 0L);
 
-            if (timerId == null) timerId = "default";
-            if (title == null || title.trim().isEmpty()) title = "Timer";
+            if (currentTimerId == null) currentTimerId = "default";
+            if (currentTitle == null || currentTitle.trim().isEmpty()) currentTitle = "Timer";
 
-            Notification notification = buildLiveCountdownNotification(this, timerId, title, targetEndMs);
+            // Stop any existing ticker loop before starting a new one
+            stopTicker();
+
+            Notification notification = buildLiveCountdownNotification(this, currentTimerId, currentTitle, currentTargetEndMs);
 
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
@@ -65,13 +81,17 @@ public class TimerForegroundService extends Service {
                 } else {
                     startForeground(FOREGROUND_NOTIF_ID, notification);
                 }
-                Log.d(TAG, "Started foreground timer service for: " + title);
+                Log.d(TAG, "Started foreground timer service for: " + currentTitle);
             } catch (Exception e) {
                 Log.e(TAG, "startForeground failed", e);
             }
 
+            // Start 1-second dynamic countdown ticker
+            startTicker();
+
         } else if (ACTION_STOP.equals(action)) {
             Log.d(TAG, "Stopping foreground timer service");
+            stopTicker();
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE);
@@ -85,9 +105,76 @@ public class TimerForegroundService extends Service {
         return START_NOT_STICKY;
     }
 
+    private void startTicker() {
+        stopTicker();
+        tickerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                long remainingMs = currentTargetEndMs - System.currentTimeMillis();
+                if (remainingMs <= 0) {
+                    // Timer expired — AlarmManager will fire the alarm activity
+                    stopTicker();
+                    return;
+                }
+
+                // Update notification text (renders live countdown in Samsung Now Bar capsule)
+                try {
+                    NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                    if (nm != null) {
+                        Notification updatedNotification = buildLiveCountdownNotification(
+                            TimerForegroundService.this,
+                            currentTimerId,
+                            currentTitle,
+                            currentTargetEndMs
+                        );
+                        nm.notify(FOREGROUND_NOTIF_ID, updatedNotification);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error updating notification ticker", e);
+                }
+
+                tickerHandler.postDelayed(this, 1000);
+            }
+        };
+
+        // Post next update in 1 second
+        tickerHandler.postDelayed(tickerRunnable, 1000);
+    }
+
+    private void stopTicker() {
+        if (tickerRunnable != null) {
+            tickerHandler.removeCallbacks(tickerRunnable);
+            tickerRunnable = null;
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        stopTicker();
+        super.onDestroy();
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    /**
+     * Format milliseconds into clean MM:SS or H:MM:SS for display in Samsung's Now Bar capsule.
+     */
+    public static String formatRemaining(long remainingMs) {
+        if (remainingMs <= 0) return "00:00";
+        // Round up to nearest second so 59.9s displays as 60s
+        long totalSecs = Math.max(0, (remainingMs + 999) / 1000);
+        long hours = totalSecs / 3600;
+        long minutes = (totalSecs % 3600) / 60;
+        long seconds = totalSecs % 60;
+
+        if (hours > 0) {
+            return String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds);
+        } else {
+            return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds);
+        }
     }
 
     /**
@@ -96,11 +183,12 @@ public class TimerForegroundService extends Service {
      * Key requirements for Samsung Now Bar / Android 16 Live Updates:
      * 1. setOngoing(true) — required for promoted ongoing activities
      * 2. setRequestPromotedOngoing(true) / "android.requestPromotedOngoing" extra
-     * 3. Must use an approved style (BigTextStyle / ProgressStyle / Standard)
-     * 4. setUsesChronometer(true) + setChronometerCountDown(true) for live countdown
+     * 3. setContentText(timeStr) — Samsung Now Bar renders EXTRA_TEXT on line 2 of the capsule
+     * 4. setUsesChronometer(true) + setChronometerCountDown(true) for native chronometer rendering
      * 5. CATEGORY_STOPWATCH — signals timer/chronometer to OS
      * 6. VISIBILITY_PUBLIC — allows rendering on lock screen & AOD
      * 7. PRIORITY_DEFAULT — standard priority ensures proper Now Bar promotion
+     * 8. setOnlyAlertOnce(true) — silent second-by-second updates without noise or vibration
      */
     public static Notification buildLiveCountdownNotification(
             Context context, String timerId, String title, long targetEndMs) {
@@ -136,11 +224,14 @@ public class TimerForegroundService extends Service {
             context, NativeAlarmReceiver.getCountdownNotificationId(timerId) + 2, stopIntent, pendingFlags
         );
 
+        long remainingMs = targetEndMs - System.currentTimeMillis();
+        String timeStr = formatRemaining(remainingMs);
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(
                 context, NativeAlarmReceiver.COUNTDOWN_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("⏳ " + title)
-            .setContentText("Timer running")
+            .setContentText(timeStr)
             .setContentIntent(openPendingIntent)
             .setShowWhen(true)
             .setWhen(targetEndMs)
@@ -152,9 +243,6 @@ public class TimerForegroundService extends Service {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setStyle(new NotificationCompat.BigTextStyle()
-                .setBigContentTitle("⏳ " + title)
-                .bigText("Active countdown in Free Form"))
             .addAction(android.R.drawable.ic_media_pause, "Pause", pausePending)
             .addAction(android.R.drawable.ic_delete, "Stop", stopPending);
 
