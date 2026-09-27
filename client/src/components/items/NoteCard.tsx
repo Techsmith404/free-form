@@ -1,9 +1,12 @@
-import React from 'react';
-import { Item, Tag } from '../../types/index.js';
-import { FileText, Star, Pin, Trash2, EyeOff } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Item, Tag, NotePriority } from '../../types/index.js';
+import { marked } from 'marked';
+import { FileText, Star, Pin, Trash2, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface NoteCardProps {
   item: Item;
+  priorities?: NotePriority[];
+  isExpanded?: boolean;
   onOpen: (item: Item) => void;
   onToggleFavorite: (item: Item) => void;
   onTogglePin: (item: Item) => void;
@@ -12,22 +15,42 @@ interface NoteCardProps {
 
 export const NoteCard: React.FC<NoteCardProps> = ({
   item,
+  priorities = [],
+  isExpanded = false,
   onOpen,
   onToggleFavorite,
   onTogglePin,
   onDelete
 }) => {
-  // Strip Markdown symbols for a clean card preview snippet
-  const snippet = (item.content || '')
-    .replace(/^#+\s+/gm, '')
-    .replace(/[*_`~>#]/g, '')
-    .slice(0, 160)
-    .trim();
+  const priority = priorities.find((p) => p.id === item.priority);
+  // Local card expand override: null means inherit from parent isExpanded
+  const [localExpanded, setLocalExpanded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Reset local override when global isExpanded changes
+    setLocalExpanded(null);
+  }, [isExpanded]);
+
+  const expanded = localExpanded !== null ? localExpanded : isExpanded;
+
+  // Render markdown to formatted HTML
+  const parsedHtml = useMemo(() => {
+    if (!item.content || !item.content.trim()) return '';
+    return marked.parse(item.content) as string;
+  }, [item.content]);
 
   return (
     <div
       onClick={() => onOpen(item)}
       className="flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-zinc-900/95 border border-zinc-800 hover:border-zinc-700/80 transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 cursor-pointer group active:scale-[0.99]"
+      style={
+        priority
+          ? {
+              borderLeftColor: priority.color,
+              borderLeftWidth: '4px'
+            }
+          : undefined
+      }
     >
       <div>
         {/* Card Header Bar */}
@@ -37,6 +60,19 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               <FileText className="w-3.5 h-3.5 text-brand-400" />
               <span>Note</span>
             </span>
+            {priority && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-md border shrink-0"
+                style={{
+                  backgroundColor: `${priority.color}15`,
+                  color: priority.color,
+                  borderColor: `${priority.color}35`
+                }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: priority.color }} />
+                <span>{priority.label}</span>
+              </span>
+            )}
             {item.notebook_name && (
               <span className="text-xs font-medium text-zinc-400 truncate max-w-[150px]">
                 {item.notebook_name}
@@ -54,13 +90,23 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           </div>
 
           <div
-            className="flex items-center gap-1"
+            className="flex items-center gap-0.5"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Toggle Single Card Expand */}
+            <button
+              type="button"
+              onClick={() => setLocalExpanded(!expanded)}
+              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
+              title={expanded ? 'Collapse preview' : 'Show full note'}
+            >
+              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+
             <button
               type="button"
               onClick={() => onToggleFavorite(item)}
-              className={`p-2 rounded-lg transition ${
+              className={`h-10 w-10 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 item.is_favorite
                   ? 'text-amber-400 bg-amber-400/10'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
@@ -72,7 +118,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             <button
               type="button"
               onClick={() => onTogglePin(item)}
-              className={`p-2 rounded-lg transition ${
+              className={`h-10 w-10 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 item.is_pinned
                   ? 'text-brand-400 bg-brand-400/10'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
@@ -84,12 +130,13 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             <button
               type="button"
               onClick={() => onDelete(item.id)}
-              className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition"
+              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
               title="Delete"
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
+
         </div>
 
         {/* Title */}
@@ -97,10 +144,25 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           {item.title}
         </h3>
 
-        {/* Content Preview */}
-        <p className="text-sm text-zinc-300 mt-2.5 line-clamp-3 leading-relaxed">
-          {snippet || <span className="italic text-zinc-500">Empty note</span>}
-        </p>
+        {/* Formatted Markdown Preview */}
+        {parsedHtml ? (
+          <div
+            className={`mt-2.5 transition-all duration-200 ${
+              expanded
+                ? ''
+                : 'max-h-40 sm:max-h-48 overflow-hidden relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-10 after:bg-gradient-to-t after:from-zinc-900/95 after:to-transparent after:pointer-events-none'
+            }`}
+          >
+            <div
+              className="note-markdown"
+              dangerouslySetInnerHTML={{ __html: parsedHtml }}
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500 italic mt-2.5">
+            Empty note
+          </p>
+        )}
       </div>
 
       {/* Card Footer */}

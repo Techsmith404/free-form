@@ -60,6 +60,7 @@ export interface FormTemplate {
   color: string;
   default_notebook_id: string | null;
   fields_schema: FormFieldDefinition[];
+  enable_processed_tracking?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +99,8 @@ export interface FormEntryMetadata {
   template_id: string;
   template_name: string;
   values: Record<string, any>;
+  is_processed?: boolean;
+  processed_at?: string | null;
 }
 
 export type ItemMetadata = CounterMetadata | BookmarkMetadata | PosterMetadata | FormEntryMetadata | Record<string, any>;
@@ -113,6 +116,7 @@ export interface Item {
   is_pinned: number; // 0 or 1
   is_archived: number; // 0 or 1
   hide_from_all?: number; // 0 or 1
+  priority?: string;
   created_at: string;
   updated_at: string;
   tags?: Tag[];
@@ -132,3 +136,111 @@ export interface Tag {
   name: string;
   color: string;
 }
+
+export type TimerStatus = 'idle' | 'running' | 'paused' | 'ringing' | 'dismissed';
+
+export interface Timer {
+  id: string;
+  title: string;
+  duration_seconds: number;
+  remaining_seconds: number;
+  status: TimerStatus;
+  target_end_time: string | null;
+  started_at: string | null;
+  paused_at: string | null;
+  completed_at: string | null;
+  notebook_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReminderStatus = 'pending' | 'triggered' | 'completed' | 'dismissed';
+export type ReminderPriority = 'low' | 'normal' | 'high';
+
+export interface Reminder {
+  id: string;
+  title: string;
+  notes: string;
+  due_date: string;
+  status: ReminderStatus;
+  priority: ReminderPriority;
+  notebook_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConflictRecord {
+  id: string;
+  item_id: string;
+  active_title: string;
+  active_content: string;
+  active_metadata: ItemMetadata;
+  active_updated_at: string;
+  conflict_title: string;
+  conflict_content: string;
+  conflict_metadata: ItemMetadata;
+  conflict_updated_at: string;
+  device_name?: string;
+  status: 'unresolved' | 'resolved';
+  resolution?: 'keep_active' | 'use_conflict' | 'keep_both' | 'custom_merge';
+  created_at: string;
+  resolved_at?: string | null;
+}
+
+export type MutationType =
+  | 'create_item'
+  | 'update_item'
+  | 'delete_item'
+  | 'counter_adjust'
+  | 'create_notebook'
+  | 'update_notebook'
+  | 'delete_notebook'
+  | 'create_template'
+  | 'update_template'
+  | 'delete_template'
+  | 'update_settings'
+  | 'create_reminder'
+  | 'update_reminder'
+  | 'delete_reminder';
+
+export interface SyncMutation {
+  id: string;
+  type: MutationType;
+  data: any;
+  client_timestamp: string;
+  base_timestamp?: string;
+}
+
+export interface SyncRequestBody {
+  device_name?: string;
+  last_sync_timestamp?: string;
+  mutations: SyncMutation[];
+}
+
+export interface SyncResponseBody {
+  success: boolean;
+  server_time: string;
+  processed_mutation_ids: string[];
+  conflicts: ConflictRecord[];
+  server_changes: {
+    items: Item[];
+    notebooks: Notebook[];
+    templates: FormTemplate[];
+    reminders: Reminder[];
+    settings?: Record<string, any>;
+  };
+}
+
+export type RealtimeEvent =
+  | { type: 'SYNC_STATE'; payload: { timers: Timer[]; reminders: Reminder[]; conflicts?: ConflictRecord[] } }
+  | { type: 'TIMER_UPDATED'; payload: { timer: Timer } }
+  | { type: 'TIMER_DELETED'; payload: { timerId: string } }
+  | { type: 'TIMER_RING'; payload: { timer: Timer } }
+  | { type: 'TIMER_DISMISSED'; payload: { timerId: string } }
+  | { type: 'REMINDER_UPDATED'; payload: { reminder: Reminder } }
+  | { type: 'REMINDER_DELETED'; payload: { reminderId: string } }
+  | { type: 'REMINDER_TRIGGER'; payload: { reminder: Reminder } }
+  | { type: 'REMINDER_DISMISSED'; payload: { reminderId: string } }
+  | { type: 'CONFLICT_CREATED'; payload: { conflict: ConflictRecord } }
+  | { type: 'CONFLICT_RESOLVED'; payload: { conflictId: string } };
+

@@ -44,6 +44,7 @@ export function initDatabase() {
       color TEXT DEFAULT '#3b82f6',
       default_notebook_id TEXT,
       fields_schema TEXT NOT NULL,
+      enable_processed_tracking INTEGER DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -84,9 +85,63 @@ export function initDatabase() {
       PRIMARY KEY (item_id, tag_id)
     );
 
+    CREATE TABLE IF NOT EXISTS timers (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      duration_seconds INTEGER NOT NULL,
+      remaining_seconds INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      target_end_time TEXT,
+      started_at TEXT,
+      paused_at TEXT,
+      completed_at TEXT,
+      notebook_id TEXT REFERENCES notebooks(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      notes TEXT DEFAULT '',
+      due_date TEXT NOT NULL,
+      status TEXT NOT NULL,
+      priority TEXT DEFAULT 'normal',
+      notebook_id TEXT REFERENCES notebooks(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS conflicts (
+      id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      active_title TEXT NOT NULL,
+      active_content TEXT NOT NULL,
+      active_metadata TEXT DEFAULT '{}',
+      active_updated_at TEXT NOT NULL,
+      conflict_title TEXT NOT NULL,
+      conflict_content TEXT NOT NULL,
+      conflict_metadata TEXT DEFAULT '{}',
+      conflict_updated_at TEXT NOT NULL,
+      device_name TEXT DEFAULT '',
+      status TEXT DEFAULT 'unresolved',
+      resolution TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      resolved_at TEXT,
+      FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_items_notebook ON items(notebook_id);
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+    CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(is_favorite);
+    CREATE INDEX IF NOT EXISTS idx_items_hidden ON items(hide_from_all);
+    CREATE INDEX IF NOT EXISTS idx_items_updated ON items(updated_at);
     CREATE INDEX IF NOT EXISTS idx_counter_history_item ON counter_history(item_id);
+    CREATE INDEX IF NOT EXISTS idx_timers_status ON timers(status);
+    CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status);
+    CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_date);
+    CREATE INDEX IF NOT EXISTS idx_conflicts_status ON conflicts(status);
+    CREATE INDEX IF NOT EXISTS idx_conflicts_item ON conflicts(item_id);
   `);
 
   // Safe schema migrations for existing SQLite databases
@@ -96,6 +151,92 @@ export function initDatabase() {
   try {
     db.exec('ALTER TABLE items ADD COLUMN hide_from_all INTEGER DEFAULT 0;');
   } catch {}
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS timers (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        remaining_seconds INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        target_end_time TEXT,
+        started_at TEXT,
+        paused_at TEXT,
+        completed_at TEXT,
+        notebook_id TEXT REFERENCES notebooks(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS reminders (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT DEFAULT '',
+        due_date TEXT NOT NULL,
+        status TEXT NOT NULL,
+        priority TEXT DEFAULT 'normal',
+        notebook_id TEXT REFERENCES notebooks(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_timers_status ON timers(status);
+      CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status);
+      CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_date);
+    `);
+  } catch {}
+
+  try {
+    db.exec("ALTER TABLE items ADD COLUMN priority TEXT DEFAULT '';");
+  } catch {}
+
+  try {
+    db.exec('ALTER TABLE templates ADD COLUMN enable_processed_tracking INTEGER DEFAULT 1;');
+  } catch {}
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS conflicts (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL,
+        active_title TEXT NOT NULL,
+        active_content TEXT NOT NULL,
+        active_metadata TEXT DEFAULT '{}',
+        active_updated_at TEXT NOT NULL,
+        conflict_title TEXT NOT NULL,
+        conflict_content TEXT NOT NULL,
+        conflict_metadata TEXT DEFAULT '{}',
+        conflict_updated_at TEXT NOT NULL,
+        device_name TEXT DEFAULT '',
+        status TEXT DEFAULT 'unresolved',
+        resolution TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_conflicts_status ON conflicts(status);
+      CREATE INDEX IF NOT EXISTS idx_conflicts_item ON conflicts(item_id);
+    `);
+  } catch {}
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  } catch {}
+
+  // Seed default settings
+  const now = new Date().toISOString();
+  const defaultPriorities = [
+    { id: 'low', label: 'Low', color: '#3b82f6' },
+    { id: 'medium', label: 'Medium', color: '#22c55e' },
+    { id: 'high', label: 'High', color: '#f59e0b' },
+    { id: 'urgent', label: 'Urgent', color: '#ef4444' }
+  ];
+  db.prepare('INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)').run('theme', 'system', now);
+  db.prepare('INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)').run('priorities', JSON.stringify(defaultPriorities), now);
 
   seedInitialData();
 }

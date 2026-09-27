@@ -29,11 +29,28 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: 'No file uploaded' });
     }
 
-    const ext = path.extname(data.filename) || '.bin';
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!allowedMimes.includes(data.mimetype)) {
+      return reply.code(400).send({ error: 'Invalid file type. Only images are allowed.' });
+    }
+
+    const ext = path.extname(data.filename).toLowerCase();
     const filename = `${crypto.randomUUID()}${ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
 
-    await pipeline(data.file, fs.createWriteStream(filePath));
+    if (data.mimetype === 'image/svg+xml' || ext === '.svg') {
+      let fileContent = '';
+      for await (const chunk of data.file) {
+        fileContent += chunk;
+      }
+      const sanitized = fileContent
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/\b(onclick|onerror|onload|onmouseover)\s*=\s*"[^"]*"/gi, '')
+        .replace(/<foreignObject\b[^<]*(?:(?!<\/foreignObject>)<[^<]*)*<\/foreignObject>/gi, '');
+      await fs.promises.writeFile(filePath, sanitized);
+    } else {
+      await pipeline(data.file, fs.createWriteStream(filePath));
+    }
 
     return {
       url: `/uploads/${filename}`,

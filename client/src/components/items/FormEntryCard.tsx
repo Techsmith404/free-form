@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
+  Circle,
   XCircle,
   Calendar,
   Clock,
@@ -26,6 +27,7 @@ interface FormEntryCardProps {
   onOpenMarkdown: (item: Item) => void;
   onToggleFavorite: (item: Item) => void;
   onTogglePin: (item: Item) => void;
+  onToggleProcessed?: (item: Item) => void;
   onDelete: (id: string) => void;
 }
 
@@ -37,10 +39,12 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
   onOpenMarkdown,
   onToggleFavorite,
   onTogglePin,
+  onToggleProcessed,
   onDelete
 }) => {
   const meta: FormEntryMetadata = item.metadata || { template_id: '', template_name: 'Form Entry', values: {} };
   const values = meta.values || {};
+  const isProcessed = Boolean(meta.is_processed);
 
   // Local card expand override: null means inherit from parent isExpanded
   const [localExpanded, setLocalExpanded] = useState<boolean | null>(null);
@@ -50,7 +54,9 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
     setLocalExpanded(null);
   }, [isExpanded]);
 
-  const expanded = localExpanded !== null ? localExpanded : isExpanded;
+  // When processed, default to compact view unless user explicitly expanded this specific card
+  const defaultExpanded = isProcessed ? false : isExpanded;
+  const expanded = localExpanded !== null ? localExpanded : defaultExpanded;
 
   // Schema fields to render
   const fields: FormFieldDefinition[] = template?.fields_schema || [];
@@ -59,16 +65,31 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
     (v) => typeof v === 'string' && (v.startsWith('/uploads/') || v.startsWith('data:image'))
   );
 
+  const handleToggleProcessed = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onToggleProcessed) {
+      onToggleProcessed(item);
+    }
+  };
+
   return (
     <div
       onClick={() => onOpenForm(item)}
-      className="flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-zinc-900/95 border border-zinc-800 hover:border-zinc-700/80 transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 cursor-pointer group active:scale-[0.99]"
+      className={`flex flex-col justify-between p-4 sm:p-5 rounded-2xl border transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 cursor-pointer group active:scale-[0.99] ${
+        isProcessed
+          ? 'opacity-65 grayscale-[35%] bg-zinc-950/40 border-dashed border-zinc-800/90 hover:opacity-100 hover:grayscale-0'
+          : 'bg-zinc-900/95 border-zinc-800 hover:border-zinc-700/80'
+      }`}
     >
       <div>
         {/* Card Header Bar */}
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2 truncate">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-brand-500/15 text-brand-400 border border-brand-500/30 rounded-lg">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase rounded-lg border ${
+              isProcessed
+                ? 'bg-zinc-800 text-zinc-400 border-zinc-700/60'
+                : 'bg-brand-500/15 text-brand-400 border-brand-500/30'
+            }`}>
               <ClipboardList className="w-3.5 h-3.5" />
               <span>{meta.template_name || 'Form'}</span>
             </span>
@@ -92,11 +113,35 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
             className="flex items-center gap-1"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* 1-Tap Processed / Seen Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleProcessed}
+              className={`h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-lg text-xs font-semibold transition-all touch-manipulation active:scale-95 shrink-0 ${
+                isProcessed
+                  ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
+                  : 'bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 text-zinc-400 hover:text-zinc-200'
+              }`}
+              title={isProcessed ? 'Marked as Processed / Seen (click to mark pending)' : 'Mark as Processed / Seen'}
+            >
+              {isProcessed ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-400/20 shrink-0" />
+                  <span className="text-[11px] font-bold">Seen</span>
+                </>
+              ) : (
+                <>
+                  <Circle className="w-4 h-4 text-zinc-500 hover:text-emerald-400 shrink-0" />
+                  <span className="text-[11px]">Mark Seen</span>
+                </>
+              )}
+            </button>
+
             {/* Toggle Single Card Expand */}
             <button
               type="button"
               onClick={() => setLocalExpanded(!expanded)}
-              className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+              className="h-9 w-9 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
               title={expanded ? 'Collapse details' : 'Show full details'}
             >
               {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -105,7 +150,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
             <button
               type="button"
               onClick={() => onToggleFavorite(item)}
-              className={`p-2 rounded-lg transition ${
+              className={`h-9 w-9 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 item.is_favorite
                   ? 'text-amber-400 bg-amber-400/10'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
@@ -117,7 +162,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
             <button
               type="button"
               onClick={() => onTogglePin(item)}
-              className={`p-2 rounded-lg transition ${
+              className={`h-9 w-9 flex items-center justify-center rounded-lg transition touch-manipulation ${
                 item.is_pinned
                   ? 'text-brand-400 bg-brand-400/10'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
@@ -129,21 +174,33 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
             <button
               type="button"
               onClick={() => onDelete(item.id)}
-              className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition"
+              className="h-9 w-9 flex items-center justify-center rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
               title="Delete"
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
+
         </div>
 
         {/* Title */}
-        <h3 className="font-bold text-zinc-100 text-lg sm:text-xl leading-snug group-hover:text-brand-400 transition-colors">
+        <h3 className={`font-bold text-lg sm:text-xl leading-snug transition-colors ${
+          isProcessed
+            ? 'text-zinc-400 line-through decoration-zinc-600'
+            : 'text-zinc-100 group-hover:text-brand-400'
+        }`}>
           {item.title}
         </h3>
 
         {/* Badges Bar */}
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          {isProcessed && (
+            <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 font-semibold">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>Processed</span>
+            </span>
+          )}
+
           {hasSignature && (
             <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
               <PenTool className="w-3 h-3" />
@@ -152,7 +209,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
           )}
 
           {Object.keys(values).length > 0 && (
-            <span className="text-xs px-2.5 py-0.5 rounded-md bg-zinc-800 border border-zinc-750 text-zinc-300 font-medium">
+            <span className="text-xs px-2.5 py-0.5 rounded-md bg-zinc-800 border border-zinc-700/60 text-zinc-300 font-medium">
               {Object.keys(values).length} fields
             </span>
           )}
@@ -312,13 +369,13 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
 
       {/* Card Footer */}
       <div
-        className="mt-5 pt-3.5 border-t border-zinc-800/90 flex items-center justify-between gap-2"
+        className="mt-5 pt-3.5 border-t border-zinc-800/90 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={() => setLocalExpanded(!expanded)}
-          className="text-xs text-zinc-400 hover:text-zinc-200 font-semibold flex items-center gap-1 py-1"
+          className="text-xs text-zinc-400 hover:text-zinc-200 font-semibold flex items-center gap-1 py-2.5 sm:py-1 justify-center sm:justify-start touch-manipulation"
         >
           <span>{expanded ? 'Less Details' : 'Show Details'}</span>
           {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -328,7 +385,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
           <button
             type="button"
             onClick={() => onOpenMarkdown(item)}
-            className="flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/60 text-xs font-semibold transition active:scale-95"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/60 text-xs font-semibold transition active:scale-95 touch-manipulation"
             title="View Rendered Markdown Document"
           >
             <Eye className="w-3.5 h-3.5 text-zinc-400" />
@@ -338,7 +395,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
           <button
             type="button"
             onClick={() => onOpenForm(item)}
-            className="flex items-center gap-1.5 min-h-[38px] px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold transition shadow-md shadow-brand-500/20 active:scale-95"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold transition shadow-md shadow-brand-500/20 active:scale-95 touch-manipulation"
           >
             <Edit2 className="w-3.5 h-3.5" />
             <span>Edit Form</span>
@@ -348,3 +405,4 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
     </div>
   );
 };
+

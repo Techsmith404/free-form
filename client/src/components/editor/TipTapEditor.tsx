@@ -111,7 +111,16 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
         editor.commands.setContent(parsedHtml);
       }
     }
-  }, [initialMarkdown]);
+  }, [initialMarkdown, editor, rawMarkdown]);
+
+  // Prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (editor) {
+        editor.destroy();
+      }
+    };
+  }, [editor]);
 
   // Handle switching between WYSIWYG and Markdown mode
   const handleToggleMode = (mode: 'wysiwyg' | 'markdown') => {

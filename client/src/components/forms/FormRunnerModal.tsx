@@ -44,6 +44,7 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
     existingItem?.notebook_id ?? defaultNotebookId ?? template.default_notebook_id ?? null
   );
 
+  const [isProcessed, setIsProcessed] = useState<boolean>(Boolean(existingItem?.metadata?.is_processed));
   const [activeTab, setActiveTab] = useState<'form' | 'preview'>('form');
   const [markdownPreview, setMarkdownPreview] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -136,7 +137,11 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
         metadata: {
           template_id: template.id,
           template_name: template.name,
-          values
+          values,
+          is_processed: isProcessed,
+          processed_at: isProcessed
+            ? (existingItem?.metadata?.processed_at || new Date().toISOString())
+            : null
         }
       };
 
@@ -157,55 +162,56 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 sm:p-6 overflow-hidden">
+      <div className="bg-zinc-900 border-t sm:border border-zinc-800 sm:rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col h-[97dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded-md">
-                Free Form Entry
+        <div className="px-4 sm:px-6 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90 shrink-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded-md shrink-0">
+                Form Entry
               </span>
-              <span className="text-xs text-zinc-400">Template: {template.name}</span>
+              <span className="text-xs text-zinc-400 truncate">{template.name}</span>
             </div>
-            <h2 className="text-xl font-bold text-zinc-100 mt-1">
-              {existingItem ? 'Edit Form Entry' : 'New Form Entry'}
+            <h2 className="text-base sm:text-lg font-bold text-zinc-100 mt-0.5">
+              {existingItem ? 'Edit Entry' : 'New Entry'}
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             {/* View Mode Toggle */}
             <div className="flex items-center bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
               <button
                 type="button"
                 onClick={() => setActiveTab('form')}
-                className={`px-3 py-1 rounded-md transition font-medium flex items-center gap-1.5 ${
+                className={`h-8 px-2.5 rounded-md transition font-medium flex items-center gap-1 touch-manipulation ${
                   activeTab === 'form'
                     ? 'bg-zinc-800 text-brand-400'
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>Form View</span>
+                <span className="hidden sm:inline">Form</span>
               </button>
               <button
                 type="button"
                 onClick={handleSwitchToPreview}
-                className={`px-3 py-1 rounded-md transition font-medium flex items-center gap-1.5 ${
+                className={`h-8 px-2.5 rounded-md transition font-medium flex items-center gap-1 touch-manipulation ${
                   activeTab === 'preview'
                     ? 'bg-zinc-800 text-brand-400'
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 <Eye className="w-3.5 h-3.5" />
-                <span>Markdown Preview</span>
+                <span className="hidden sm:inline">Preview</span>
               </button>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
+              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -213,34 +219,34 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
         </div>
 
         {error && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
+          <div className="mx-4 sm:mx-6 mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2 shrink-0">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {/* Note Metadata Configuration */}
-        <div className="px-6 py-3 bg-zinc-950/40 border-b border-zinc-800/60 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div className="px-4 sm:px-6 py-3 bg-zinc-950/40 border-b border-zinc-800/60 grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
           <div>
-            <label className="block text-zinc-400 font-medium mb-1">Entry Title</label>
+            <label className="block text-xs text-zinc-400 font-medium mb-1.5">Entry Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Title for this form note..."
-              className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-brand-500 text-sm"
+              className="w-full h-11 px-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-brand-500 text-sm"
             />
           </div>
 
           <div>
-            <label className="block text-zinc-400 font-medium mb-1 flex items-center gap-1">
+            <label className="block text-xs text-zinc-400 font-medium mb-1.5 flex items-center gap-1">
               <Folder className="w-3.5 h-3.5 text-brand-400" />
               <span>Save to Notebook</span>
             </label>
             <select
               value={notebookId || ''}
               onChange={(e) => setNotebookId(e.target.value || null)}
-              className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-brand-500 text-sm"
+              className="w-full h-11 px-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-brand-500 text-sm"
             >
               <option value="">Uncategorized (No Notebook)</option>
               {notebooks.map((nb) => (
@@ -250,10 +256,39 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
               ))}
             </select>
           </div>
+
+          {template.enable_processed_tracking !== false && (
+            <div className="col-span-1 sm:col-span-2 pt-1">
+              <label className="flex items-center justify-between p-2.5 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 rounded-xl cursor-pointer transition touch-manipulation select-none">
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={isProcessed}
+                    onChange={(e) => setIsProcessed(e.target.checked)}
+                    className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500 bg-zinc-950 border-zinc-700"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${isProcessed ? 'text-emerald-400' : 'text-zinc-500'}`} />
+                      Mark as Processed / Seen
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      Dims entry and defaults to compact view in your list
+                    </span>
+                  </div>
+                </div>
+                {isProcessed && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0">
+                    Processed
+                  </span>
+                )}
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
           {activeTab === 'form' ? (
             <div className="space-y-5">
               {template.fields_schema.map((field) => {
@@ -457,11 +492,11 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-zinc-800 bg-zinc-900/90 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-3 border-t border-zinc-800 bg-zinc-900/90 flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition"
+            className="h-11 px-4 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition touch-manipulation"
           >
             Cancel
           </button>
@@ -470,7 +505,7 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-brand-500/20"
+            className="flex items-center gap-2 h-11 px-5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-brand-500/20 touch-manipulation"
           >
             <Save className="w-4 h-4" />
             <span>{saving ? 'Saving...' : 'Save Form Note'}</span>

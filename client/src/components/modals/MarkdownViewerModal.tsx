@@ -25,8 +25,8 @@ export const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
   const html = marked.parse(item.content || '*No content*') as string;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 sm:p-6 overflow-hidden">
+      <div className="bg-zinc-900 border-t sm:border border-zinc-800 sm:rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden my-auto animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-brand-400" />

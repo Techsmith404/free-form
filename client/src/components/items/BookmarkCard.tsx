@@ -82,23 +82,23 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-3 border-t border-zinc-800/90 flex items-center justify-between">
+        <div className="pt-3 border-t border-zinc-800/90 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <a
             href={meta.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-md shadow-blue-500/20 active:scale-95"
+            className="flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-md shadow-blue-500/20 active:scale-95 touch-manipulation"
           >
             <span>Visit Link</span>
             <ExternalLink className="w-3.5 h-3.5 stroke-[2.5]" />
           </a>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 sm:ml-auto">
             {onEdit && (
               <button
                 type="button"
                 onClick={() => onEdit(item)}
-                className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
                 title="Edit Bookmark"
               >
                 <Edit2 className="w-4 h-4" />
@@ -107,13 +107,14 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
             <button
               type="button"
               onClick={() => onDelete(item.id)}
-              className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
+              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
               title="Delete"
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );

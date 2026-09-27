@@ -2,6 +2,7 @@ import fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import websocket from '@fastify/websocket';
 import path from 'path';
 import fs from 'fs';
 import { initDatabase, UPLOADS_DIR } from './db/index.js';
@@ -11,6 +12,12 @@ import { templateRoutes } from './routes/templates.js';
 import { tagRoutes } from './routes/tags.js';
 import { uploadRoutes } from './routes/upload.js';
 import { exportRoutes } from './routes/export.js';
+import { timerRoutes } from './routes/timers.js';
+import { reminderRoutes } from './routes/reminders.js';
+import { settingsRoutes } from './routes/settings.js';
+import { syncRoutes } from './routes/sync.js';
+import { conflictsRoutes } from './routes/conflicts.js';
+import { addClient, startRealtimeTicker, stopRealtimeTicker } from './services/realtime.js';
 
 const app = fastify({
   logger: true
@@ -26,6 +33,8 @@ async function main() {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
   });
 
+  await app.register(websocket);
+
   await app.register(multipart, {
     limits: {
       fileSize: 50 * 1024 * 1024 // 50MB
@@ -39,6 +48,11 @@ async function main() {
     decorateReply: false
   });
 
+  // WebSocket real-time broadcast endpoint
+  app.get('/api/ws', { websocket: true }, (socket, req) => {
+    addClient(socket);
+  });
+
   // 3. API Routes
   await app.register(notebookRoutes);
   await app.register(itemRoutes);
@@ -46,6 +60,14 @@ async function main() {
   await app.register(tagRoutes);
   await app.register(uploadRoutes);
   await app.register(exportRoutes);
+  await app.register(timerRoutes);
+  await app.register(reminderRoutes);
+  await app.register(settingsRoutes);
+  await app.register(syncRoutes);
+  await app.register(conflictsRoutes);
+
+  // Start background timer/reminder ticker
+  startRealtimeTicker();
 
   // Health check endpoint
   app.get('/api/health', async () => ({
@@ -68,13 +90,32 @@ async function main() {
     await app.register(fastifyStatic, {
       root: staticDir,
       prefix: '/',
-      decorateReply: false
+      decorateReply: false,
+      setHeaders: (res, pathName) => {
+        // Cache-busting: never cache index.html, service worker, or manifest
+        if (
+          pathName.endsWith('index.html') ||
+          pathName.endsWith('sw.js') ||
+          pathName.endsWith('registerSW.js') ||
+          pathName.endsWith('manifest.webmanifest')
+        ) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        } else if (pathName.includes('/assets/')) {
+          // Vite hashed assets are immutable
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      }
     });
 
     app.setNotFoundHandler((request, reply) => {
       if (request.raw.url && request.raw.url.startsWith('/api')) {
         reply.status(404).send({ error: 'Endpoint not found' });
       } else {
+        reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+        reply.header('Pragma', 'no-cache');
+        reply.header('Expires', '0');
         reply.sendFile('index.html', staticDir);
       }
     });
@@ -90,6 +131,23 @@ async function main() {
     app.log.error(err);
     process.exit(1);
   }
+  const shutdown = async (signal: string) => {
+    app.log.info(`Received ${signal}. Shutting down gracefully...`);
+    try {
+      stopRealtimeTicker();
+      await app.close();
+      const { db } = await import('./db/index.js');
+      db.close();
+      app.log.info('Closed database connection.');
+      process.exit(0);
+    } catch (err) {
+      app.log.error(err);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 main();

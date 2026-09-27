@@ -19,6 +19,8 @@
     "docker:down": "docker compose down"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "concurrently": "^9.1.2"
   }
 }

@@ -182,10 +182,11 @@ export async function itemRoutes(fastify: FastifyInstance) {
     const is_favorite = body.is_favorite ? 1 : 0;
     const is_pinned = body.is_pinned ? 1 : 0;
     const hide_from_all = body.hide_from_all ? 1 : 0;
+    const priority = body.priority || '';
 
     db.prepare(`
-      INSERT INTO items (id, notebook_id, title, type, content, metadata, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, notebook_id, title, type, content, metadata, priority, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       notebook_id,
@@ -193,6 +194,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
       type,
       content,
       JSON.stringify(metadata),
+      priority,
       is_favorite,
       is_pinned,
       0,
@@ -270,6 +272,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
         title = COALESCE(?, title),
         content = ?,
         metadata = ?,
+        priority = COALESCE(?, priority),
         is_favorite = COALESCE(?, is_favorite),
         is_pinned = COALESCE(?, is_pinned),
         is_archived = COALESCE(?, is_archived),
@@ -281,6 +284,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
       body.title !== undefined ? body.title.trim() : null,
       nextContent,
       JSON.stringify(nextMetadata),
+      body.priority !== undefined ? body.priority : null,
       body.is_favorite !== undefined ? (body.is_favorite ? 1 : 0) : null,
       body.is_pinned !== undefined ? (body.is_pinned ? 1 : 0) : null,
       body.is_archived !== undefined ? (body.is_archived ? 1 : 0) : null,

@@ -47,6 +47,9 @@ export const TemplateBuilderModal: React.FC<TemplateBuilderModalProps> = ({
   const [defaultNotebookId, setDefaultNotebookId] = useState<string | null>(
     existingTemplate?.default_notebook_id || null
   );
+  const [enableProcessedTracking, setEnableProcessedTracking] = useState<boolean>(
+    existingTemplate?.enable_processed_tracking ?? true
+  );
 
   const [fields, setFields] = useState<FormFieldDefinition[]>(
     existingTemplate?.fields_schema || [
@@ -207,7 +210,8 @@ export const TemplateBuilderModal: React.FC<TemplateBuilderModalProps> = ({
         color,
         icon,
         default_notebook_id: defaultNotebookId || null,
-        fields_schema: fields
+        fields_schema: fields,
+        enable_processed_tracking: enableProcessedTracking
       };
 
       let saved: FormTemplate;
@@ -227,8 +231,8 @@ export const TemplateBuilderModal: React.FC<TemplateBuilderModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 sm:p-6 overflow-hidden">
+      <div className="bg-zinc-900 border-t sm:border border-zinc-800 sm:rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         {/* Header */}
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90">
           <div>
@@ -326,6 +330,21 @@ export const TemplateBuilderModal: React.FC<TemplateBuilderModalProps> = ({
                 />
                 <span className="font-mono text-zinc-400">{color}</span>
               </div>
+            </div>
+
+            <div className="pt-1.5 border-t border-zinc-800/80">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-zinc-300 font-medium hover:text-white transition-colors">
+                <input
+                  type="checkbox"
+                  checked={enableProcessedTracking}
+                  onChange={(e) => setEnableProcessedTracking(e.target.checked)}
+                  className="rounded border-zinc-700 text-brand-500 focus:ring-brand-500 w-4 h-4 bg-zinc-950"
+                />
+                <span>Track Processed / Seen Status</span>
+              </label>
+              <p className="text-[10px] text-zinc-500 mt-0.5 ml-6 leading-tight">
+                Adds 1-tap "Mark Seen" toggle to entries to gray out and compact completed forms.
+              </p>
             </div>
           </div>
         </div>

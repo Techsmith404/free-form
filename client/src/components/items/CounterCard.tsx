@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Item, CounterMetadata, CounterHistoryEntry } from '../../types/index.js';
 import { counterAction, fetchCounterHistory } from '../../api/index.js';
 import { Plus, Minus, RotateCcw, History, Trash2, Edit2, Hash, EyeOff } from 'lucide-react';
+import { ConfirmModal } from '../modals/ConfirmModal.js';
 
 interface CounterCardProps {
   item: Item;
@@ -21,6 +22,7 @@ export const CounterCard: React.FC<CounterCardProps> = ({
   const [history, setHistory] = useState<CounterHistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [customDelta, setCustomDelta] = useState<string>('');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleAdjust = async (delta: number) => {
     try {
@@ -37,8 +39,11 @@ export const CounterCard: React.FC<CounterCardProps> = ({
     }
   };
 
-  const handleReset = async () => {
-    if (!confirm(`Reset counter "${item.title}"?`)) return;
+  const handleResetClick = () => {
+    setShowResetConfirm(true);
+  };
+
+  const handlePerformReset = async () => {
     try {
       setLoading(true);
       const res = await counterAction(item.id, { reset: true });
@@ -46,6 +51,7 @@ export const CounterCard: React.FC<CounterCardProps> = ({
         ...item,
         metadata: res.metadata
       });
+      setShowResetConfirm(false);
     } catch (err) {
       console.error('Counter reset failed', err);
     } finally {
@@ -102,11 +108,11 @@ export const CounterCard: React.FC<CounterCardProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={handleToggleHistory}
-              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
+              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
               title="View History"
             >
               <History className="w-4 h-4" />
@@ -115,7 +121,7 @@ export const CounterCard: React.FC<CounterCardProps> = ({
               <button
                 type="button"
                 onClick={() => onEdit(item)}
-                className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
                 title="Edit Counter"
               >
                 <Edit2 className="w-4 h-4" />
@@ -124,12 +130,13 @@ export const CounterCard: React.FC<CounterCardProps> = ({
             <button
               type="button"
               onClick={() => onDelete(item.id)}
-              className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
+              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
               title="Delete"
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
+
         </div>
 
         <h3 className="font-bold text-zinc-100 text-lg sm:text-xl leading-snug">
@@ -143,7 +150,7 @@ export const CounterCard: React.FC<CounterCardProps> = ({
       {/* Main Counter Display (Big & Punchy) */}
       <div className="my-6 text-center py-2 bg-zinc-950/50 rounded-2xl border border-zinc-800/80">
         <div className="inline-flex items-baseline gap-2.5">
-          <span className="text-6xl sm:text-7xl font-black tracking-tight text-white font-mono">
+          <span className="text-6xl sm:text-7xl font-black tracking-tight text-zinc-100 font-mono">
             {meta.count ?? 0}
           </span>
           {meta.unit && (
@@ -156,20 +163,20 @@ export const CounterCard: React.FC<CounterCardProps> = ({
 
       {/* Touch-Friendly Action Buttons */}
       <div className="space-y-3">
-        <div className="grid grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
             disabled={loading}
             onClick={() => handleAdjust(-step * 5)}
-            className="h-12 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-sm border border-zinc-700/60 transition active:scale-95 disabled:opacity-40"
+            className="h-14 sm:h-12 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-sm border border-zinc-700/60 transition active:scale-95 disabled:opacity-40 touch-manipulation"
           >
-            -5
+            -{step * 5}
           </button>
           <button
             type="button"
             disabled={loading}
             onClick={() => handleAdjust(-step)}
-            className="h-12 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-black text-lg border border-zinc-700/60 flex items-center justify-center transition active:scale-95 disabled:opacity-40"
+            className="h-14 sm:h-12 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-black text-lg border border-zinc-700/60 flex items-center justify-center transition active:scale-95 disabled:opacity-40 touch-manipulation"
           >
             <Minus className="w-5 h-5 stroke-[3]" />
           </button>
@@ -177,7 +184,7 @@ export const CounterCard: React.FC<CounterCardProps> = ({
             type="button"
             disabled={loading}
             onClick={() => handleAdjust(step)}
-            className="h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-lg flex items-center justify-center transition shadow-lg shadow-emerald-500/25 active:scale-95 disabled:opacity-40"
+            className="h-14 sm:h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-lg flex items-center justify-center transition shadow-lg shadow-emerald-500/25 active:scale-95 disabled:opacity-40 touch-manipulation"
           >
             <Plus className="w-5 h-5 stroke-[3]" />
           </button>
@@ -185,9 +192,9 @@ export const CounterCard: React.FC<CounterCardProps> = ({
             type="button"
             disabled={loading}
             onClick={() => handleAdjust(step * 5)}
-            className="h-12 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-bold text-sm transition active:scale-95 disabled:opacity-40"
+            className="h-14 sm:h-12 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-bold text-sm transition active:scale-95 disabled:opacity-40 touch-manipulation"
           >
-            +5
+            +{step * 5}
           </button>
         </div>
 
@@ -198,12 +205,12 @@ export const CounterCard: React.FC<CounterCardProps> = ({
               placeholder="+/- custom"
               value={customDelta}
               onChange={(e) => setCustomDelta(e.target.value)}
-              className="w-full h-9 px-3 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 font-medium"
+              className="w-full h-11 sm:h-9 px-3 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-100 focus:outline-none focus:border-emerald-500 font-medium"
             />
             <button
               type="submit"
               disabled={!customDelta}
-              className="h-9 px-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-lg text-zinc-200 text-xs font-semibold transition shrink-0"
+              className="h-11 sm:h-9 px-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-lg text-zinc-200 text-xs font-semibold transition shrink-0 touch-manipulation"
             >
               Apply
             </button>
@@ -211,14 +218,15 @@ export const CounterCard: React.FC<CounterCardProps> = ({
 
           <button
             type="button"
-            onClick={handleReset}
-            className="h-9 px-3 flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition rounded-lg hover:bg-zinc-800"
+            onClick={handleResetClick}
+            className="h-11 sm:h-9 px-3 flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition rounded-lg hover:bg-zinc-800 touch-manipulation"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset</span>
           </button>
         </div>
       </div>
+
 
       {/* History Log */}
       {showHistory && (
@@ -251,6 +259,19 @@ export const CounterCard: React.FC<CounterCardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Native Reset Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showResetConfirm}
+        title="Reset Counter?"
+        message={`Are you sure you want to reset "${item.title}" back to ${meta.resetValue ?? 0}? This will be recorded in the activity history.`}
+        confirmText="Reset Counter"
+        confirmVariant="warning"
+        icon="reset"
+        isLoading={loading}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={handlePerformReset}
+      />
     </div>
   );
 };

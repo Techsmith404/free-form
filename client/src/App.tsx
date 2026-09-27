@@ -4,7 +4,10 @@ import {
   Item,
   FormTemplate,
   Tag,
-  ItemType
+  ItemType,
+  ThemeMode,
+  NotePriority,
+  AppSettings
 } from './types/index.js';
 import {
   fetchNotebooks,
@@ -14,7 +17,9 @@ import {
   deleteNotebook,
   deleteItem,
   updateItem,
-  deleteTemplate
+  deleteTemplate,
+  fetchSettings,
+  updateSettings
 } from './api/index.js';
 import { Sidebar } from './components/layout/Sidebar.js';
 import { Navbar } from './components/layout/Navbar.js';
@@ -24,6 +29,7 @@ import { FormEntryCard } from './components/items/FormEntryCard.js';
 import { CounterCard } from './components/items/CounterCard.js';
 import { BookmarkCard } from './components/items/BookmarkCard.js';
 import { PosterCard } from './components/items/PosterCard.js';
+import { ItemListItem } from './components/items/ItemListItem.js';
 
 // Modals
 import { NoteEditorModal } from './components/modals/NoteEditorModal.js';
@@ -34,11 +40,64 @@ import { NewPosterModal } from './components/modals/NewPosterModal.js';
 import { FormRunnerModal } from './components/forms/FormRunnerModal.js';
 import { TemplateBuilderModal } from './components/forms/TemplateBuilderModal.js';
 import { MarkdownViewerModal } from './components/modals/MarkdownViewerModal.js';
+import { AlarmAlertModal } from './components/modals/AlarmAlertModal.js';
+import { TimersAndRemindersModal } from './components/modals/TimersAndRemindersModal.js';
+import { ConfirmModal } from './components/modals/ConfirmModal.js';
+import { SettingsModal } from './components/modals/SettingsModal.js';
+import { ConflictResolverModal } from './components/modals/ConflictResolverModal.js';
+import { useRealtime } from './context/RealtimeContext.js';
 
-import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers } from 'lucide-react';
+import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers, Clock } from 'lucide-react';
+
+const DEFAULT_PRIORITIES: NotePriority[] = [
+  { id: 'low', label: 'Low', color: '#3b82f6' },
+  { id: 'medium', label: 'Medium', color: '#22c55e' },
+  { id: 'high', label: 'High', color: '#f59e0b' },
+  { id: 'urgent', label: 'Urgent', color: '#ef4444' }
+];
 
 export const App: React.FC = () => {
+  const {
+    timersModalOpen,
+    setTimersModalOpen,
+    conflicts,
+    conflictModalOpen,
+    setConflictModalOpen,
+    refreshConflicts,
+    isConnected,
+    isConnecting,
+    reconnectAttempt,
+    manualReconnect
+  } = useRealtime();
+
+  // Settings State & Theme
+  const [settings, setSettings] = useState<AppSettings>({
+    theme: 'system',
+    priorities: DEFAULT_PRIORITIES
+  });
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+
+  // Apply Theme (Light / Dark / Follow System)
+  useEffect(() => {
+    const applyTheme = () => {
+      const isDark =
+        settings.theme === 'dark' ||
+        (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.classList.toggle('dark', isDark);
+    };
+
+    applyTheme();
+
+    if (settings.theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const listener = () => applyTheme();
+      mediaQuery.addEventListener('change', listener);
+      return () => mediaQuery.removeEventListener('change', listener);
+    }
+  }, [settings.theme]);
+
   // Data State
+
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
@@ -65,21 +124,45 @@ export const App: React.FC = () => {
   const [formRunnerModal, setFormRunnerModal] = useState<{ open: boolean; template?: FormTemplate | null; existingItem?: Item | null }>({ open: false });
   const [templateBuilderModal, setTemplateBuilderModal] = useState<{ open: boolean; template?: FormTemplate | null }>({ open: false });
   const [markdownViewerModal, setMarkdownViewerModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    confirmVariant?: 'danger' | 'warning' | 'primary';
+    icon?: 'trash' | 'warning' | 'reset' | 'info';
+    isLoading?: boolean;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const closeConfirmModal = () => {
+    setConfirmModal((prev) => ({ ...prev, open: false, isLoading: false }));
+  };
 
   // Initial Data Load
   const loadData = async () => {
     try {
       setLoading(true);
-      const [nbs, itms, tpls, tgs] = await Promise.all([
+      const [nbs, itms, tpls, tgs, stgs] = await Promise.all([
         fetchNotebooks(),
-        fetchItems({ is_archived: activeFilter === 'trash' }),
+        fetchItems({ is_archived: activeFilter === 'trash', include_hidden: true }),
         fetchTemplates(),
-        fetchTags()
+        fetchTags(),
+        fetchSettings().catch(() => null)
       ]);
       setNotebooks(nbs);
       setItems(itms);
       setTemplates(tpls);
       setTags(tgs);
+      if (stgs) {
+        setSettings(stgs);
+      }
     } catch (err) {
       console.error('Error loading data', err);
     } finally {
@@ -87,9 +170,39 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleThemeChange = async (newTheme: ThemeMode) => {
+    const updated = { ...settings, theme: newTheme };
+    setSettings(updated);
+    try {
+      await updateSettings(updated);
+    } catch (err) {
+      console.error('Failed to update theme setting', err);
+    }
+  };
+
+  const handlePrioritiesChange = async (newPriorities: NotePriority[]) => {
+    const updated = { ...settings, priorities: newPriorities };
+    setSettings(updated);
+    try {
+      await updateSettings(updated);
+    } catch (err) {
+      console.error('Failed to update priorities setting', err);
+    }
+  };
+
   useEffect(() => {
     loadData();
+    refreshConflicts();
   }, [activeFilter]);
+
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      loadData();
+      refreshConflicts();
+    };
+    window.addEventListener('freeform:sync-complete', handleSyncComplete);
+    return () => window.removeEventListener('freeform:sync-complete', handleSyncComplete);
+  }, []);
 
   // Active Notebook Object
   const activeNotebook = useMemo(() => {
@@ -169,18 +282,33 @@ export const App: React.FC = () => {
     fetchNotebooks().then(setNotebooks);
   };
 
-  const handleDeleteItem = async (id: string) => {
+  const handleDeleteItem = (id: string) => {
     const isTrash = activeFilter === 'trash';
-    const msg = isTrash ? 'Permanently delete this item?' : 'Move item to trash?';
-    if (!confirm(msg)) return;
+    const targetItem = items.find((i) => i.id === id);
+    const itemTitle = targetItem?.title ? `"${targetItem.title}"` : 'this item';
 
-    try {
-      await deleteItem(id, isTrash);
-      setItems((prev) => prev.filter((i) => i.id !== id));
-      fetchNotebooks().then(setNotebooks);
-    } catch (err) {
-      console.error('Failed to delete item', err);
-    }
+    setConfirmModal({
+      open: true,
+      title: isTrash ? 'Permanently Delete Item?' : 'Move Item to Trash?',
+      message: isTrash
+        ? `Are you sure you want to permanently delete ${itemTitle}? This action cannot be undone.`
+        : `Move ${itemTitle} to trash? You can view or restore it anytime from Trash.`,
+      confirmText: isTrash ? 'Delete Permanently' : 'Move to Trash',
+      confirmVariant: 'danger',
+      icon: 'trash',
+      onConfirm: async () => {
+        try {
+          setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+          await deleteItem(id, isTrash);
+          setItems((prev) => prev.filter((i) => i.id !== id));
+          fetchNotebooks().then(setNotebooks);
+          closeConfirmModal();
+        } catch (err) {
+          console.error('Failed to delete item', err);
+          setConfirmModal((prev) => ({ ...prev, isLoading: false }));
+        }
+      }
+    });
   };
 
   const handleToggleFavorite = async (item: Item) => {
@@ -203,6 +331,34 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleToggleProcessed = async (item: Item) => {
+    const isCurrentlyProcessed = Boolean(item.metadata?.is_processed);
+    const newProcessed = !isCurrentlyProcessed;
+    const newMetadata = {
+      ...(item.metadata || {}),
+      is_processed: newProcessed,
+      processed_at: newProcessed ? new Date().toISOString() : null
+    };
+
+    // Optimistic UI update
+    const optimisticItem: Item = {
+      ...item,
+      metadata: newMetadata
+    };
+    handleItemSaved(optimisticItem);
+
+    try {
+      const updated = await updateItem(item.id, {
+        metadata: newMetadata
+      });
+      handleItemSaved(updated);
+    } catch (err) {
+      console.error('Failed to toggle processed status', err);
+      // Revert to original item on error
+      handleItemSaved(item);
+    }
+  };
+
   // Notebook Handlers
   const handleNotebookSaved = (nb: Notebook) => {
     setNotebooks((prev) => {
@@ -216,16 +372,31 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleDeleteNotebook = async (id: string) => {
-    if (!confirm('Delete this notebook? Notes will be moved to Uncategorized.')) return;
-    try {
-      await deleteNotebook(id);
-      setNotebooks((prev) => prev.filter((n) => n.id !== id));
-      if (activeNotebookId === id) setActiveNotebookId(null);
-      loadData();
-    } catch (err) {
-      console.error('Failed to delete notebook', err);
-    }
+  const handleDeleteNotebook = (id: string) => {
+    const nb = notebooks.find((n) => n.id === id);
+    const nbName = nb?.name ? `"${nb.name}"` : 'this notebook';
+
+    setConfirmModal({
+      open: true,
+      title: 'Delete Notebook?',
+      message: `Are you sure you want to delete ${nbName}? Its notes will be preserved and moved to Uncategorized.`,
+      confirmText: 'Delete Notebook',
+      confirmVariant: 'danger',
+      icon: 'trash',
+      onConfirm: async () => {
+        try {
+          setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+          await deleteNotebook(id);
+          setNotebooks((prev) => prev.filter((n) => n.id !== id));
+          if (activeNotebookId === id) setActiveNotebookId(null);
+          loadData();
+          closeConfirmModal();
+        } catch (err) {
+          console.error('Failed to delete notebook', err);
+          setConfirmModal((prev) => ({ ...prev, isLoading: false }));
+        }
+      }
+    });
   };
 
   // Quick Add Action from Navbar or Notebook
@@ -262,6 +433,7 @@ export const App: React.FC = () => {
         onNewTemplate={() => setTemplateBuilderModal({ open: true, template: null })}
         isOpenMobile={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
+        onOpenSettings={() => setSettingsModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -285,20 +457,60 @@ export const App: React.FC = () => {
               : undefined
           }
           backLabel={parentNotebook ? parentNotebook.name : 'All Notes'}
+          onOpenSettings={() => setSettingsModalOpen(true)}
         />
 
+        {/* Offline Banner when server connection is lost */}
+        {!isConnected && (
+          <div className="bg-red-500/15 border-b border-red-500/30 px-3 sm:px-6 py-2 flex items-center justify-between text-xs text-red-300 shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shrink-0" />
+              <span>
+                {isConnecting
+                  ? `Connecting to server (attempt ${reconnectAttempt})...`
+                  : 'Disconnected from server. Realtime sync paused.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={manualReconnect}
+              className="px-2.5 py-1 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg transition active:scale-95 touch-manipulation shrink-0"
+            >
+              Retry Now
+            </button>
+          </div>
+        )}
+
         {/* Views */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-28 sm:pb-8">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-32 sm:pb-10 lg:pb-6">
           {activeFilter === 'templates' ? (
             <TemplatesView
               templates={templates}
               onNewTemplate={() => setTemplateBuilderModal({ open: true, template: null })}
               onEditTemplate={(tpl) => setTemplateBuilderModal({ open: true, template: tpl })}
-              onDeleteTemplate={async (id) => {
-                if (confirm('Delete this template?')) {
-                  await deleteTemplate(id);
-                  setTemplates((prev) => prev.filter((t) => t.id !== id));
-                }
+              onDeleteTemplate={(id) => {
+                const tpl = templates.find((t) => t.id === id);
+                const tplName = tpl?.name ? `"${tpl.name}"` : 'this template';
+
+                setConfirmModal({
+                  open: true,
+                  title: 'Delete Form Template?',
+                  message: `Are you sure you want to delete ${tplName}? Any existing notes created from this template will not be affected.`,
+                  confirmText: 'Delete Template',
+                  confirmVariant: 'danger',
+                  icon: 'trash',
+                  onConfirm: async () => {
+                    try {
+                      setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+                      await deleteTemplate(id);
+                      setTemplates((prev) => prev.filter((t) => t.id !== id));
+                      closeConfirmModal();
+                    } catch (err) {
+                      console.error('Failed to delete template', err);
+                      setConfirmModal((prev) => ({ ...prev, isLoading: false }));
+                    }
+                  }
+                });
               }}
               onRunTemplate={(tpl) => setFormRunnerModal({ open: true, template: tpl })}
             />
@@ -455,10 +667,40 @@ export const App: React.FC = () => {
                   className={
                     viewMode === 'grid'
                       ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
-                      : 'flex flex-col space-y-3'
+                      : 'flex flex-col space-y-2'
                   }
                 >
                   {filteredItems.map((item) => {
+                    if (viewMode === 'list') {
+                      return (
+                        <ItemListItem
+                          key={item.id}
+                          item={item}
+                          priorities={settings.priorities}
+                          onOpen={(it) => {
+                            if (it.type === 'counter') setCounterModal({ open: true, item: it });
+                            else if (it.type === 'bookmark') setBookmarkModal({ open: true, item: it });
+                            else if (it.type === 'poster') setPosterModal({ open: true, item: it });
+                            else if (it.type === 'form_entry') {
+                              const tpl = templates.find((t) => t.id === it.metadata?.template_id);
+                              if (tpl) {
+                                setFormRunnerModal({ open: true, template: tpl, existingItem: it });
+                              } else {
+                                setMarkdownViewerModal({ open: true, item: it });
+                              }
+                            } else {
+                              setNoteModal({ open: true, item: it });
+                            }
+                          }}
+                          onUpdate={handleItemSaved}
+                          onToggleFavorite={handleToggleFavorite}
+                          onTogglePin={handleTogglePin}
+                          onToggleProcessed={handleToggleProcessed}
+                          onDelete={handleDeleteItem}
+                        />
+                      );
+                    }
+
                     switch (item.type) {
                       case 'counter':
                         return (
@@ -498,7 +740,7 @@ export const App: React.FC = () => {
                             template={templates.find((t) => t.id === item.metadata?.template_id)}
                             isExpanded={expandAllCards}
                             onOpenForm={(it) => {
-                              const tpl = templates.find((t) => t.id === it.metadata?.template_id);
+                              const tpl = templates.find((t) => t.id === item.metadata?.template_id);
                               if (tpl) {
                                 setFormRunnerModal({ open: true, template: tpl, existingItem: it });
                               }
@@ -506,6 +748,7 @@ export const App: React.FC = () => {
                             onOpenMarkdown={(it) => setMarkdownViewerModal({ open: true, item: it })}
                             onToggleFavorite={handleToggleFavorite}
                             onTogglePin={handleTogglePin}
+                            onToggleProcessed={handleToggleProcessed}
                             onDelete={handleDeleteItem}
                           />
                         );
@@ -515,6 +758,8 @@ export const App: React.FC = () => {
                           <NoteCard
                             key={item.id}
                             item={item}
+                            priorities={settings.priorities}
+                            isExpanded={expandAllCards}
                             onOpen={(it) => setNoteModal({ open: true, item: it })}
                             onToggleFavorite={handleToggleFavorite}
                             onTogglePin={handleTogglePin}
@@ -531,233 +776,275 @@ export const App: React.FC = () => {
       </div>
 
       {/* Native Mobile Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/80 px-3 py-1.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] lg:hidden flex items-center justify-around shadow-2xl">
-        {/* Tab 1: All Items */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveNotebookId(null);
-            setActiveFilter('all');
-          }}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
-            activeFilter === 'all' && activeNotebookId === null
-              ? 'text-brand-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <FileText className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5 font-medium">All Notes</span>
-        </button>
-
-        {/* Tab 2: Notebooks */}
-        <button
-          type="button"
-          onClick={() => setMobileSidebarOpen(true)}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
-            activeNotebookId !== null
-              ? 'text-brand-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Folder className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5 font-medium">Notebooks</span>
-        </button>
-
-        {/* Tab 3: Center Elevated Add (+) Button */}
-        <div className="relative -top-3">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/80 lg:hidden shadow-2xl">
+        {/* Tab items row */}
+        <div className="flex items-end justify-around px-1 pt-1 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+          {/* Tab 1: All Items */}
           <button
             type="button"
             onClick={() => {
-              if (activeNotebook?.default_template_id) {
-                const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
-                if (tpl) {
-                  setFormRunnerModal({ open: true, template: tpl });
-                  return;
-                }
-              }
-              setMobileFabMenuOpen(!mobileFabMenuOpen);
+              setActiveNotebookId(null);
+              setActiveFilter('all');
             }}
-            className="h-12 w-12 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center shadow-lg shadow-brand-500/40 active:scale-95 transition transform ring-4 ring-zinc-950"
-            aria-label="New Item"
+            className={`relative flex flex-col items-center justify-center gap-0.5 py-2 px-4 rounded-2xl transition-all duration-200 touch-manipulation min-w-[52px] ${
+              activeFilter === 'all' && activeNotebookId === null
+                ? 'text-brand-400'
+                : 'text-zinc-500 hover:text-zinc-300 active:text-zinc-200'
+            }`}
           >
-            <Plus
-              className={`w-6 h-6 stroke-[2.5] transition-transform duration-200 ${
-                mobileFabMenuOpen ? 'rotate-45' : ''
-              }`}
-            />
+            {activeFilter === 'all' && activeNotebookId === null && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-brand-400 rounded-full" />
+            )}
+            <FileText className="w-6 h-6" />
+            <span className={`text-[10px] font-semibold leading-none ${activeFilter === 'all' && activeNotebookId === null ? 'font-bold' : ''}`}>All Notes</span>
+          </button>
+
+          {/* Tab 2: Notebooks */}
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(true)}
+            className={`relative flex flex-col items-center justify-center gap-0.5 py-2 px-4 rounded-2xl transition-all duration-200 touch-manipulation min-w-[52px] ${
+              activeNotebookId !== null
+                ? 'text-brand-400'
+                : 'text-zinc-500 hover:text-zinc-300 active:text-zinc-200'
+            }`}
+          >
+            {activeNotebookId !== null && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-brand-400 rounded-full" />
+            )}
+            <Folder className="w-6 h-6" />
+            <span className={`text-[10px] font-semibold leading-none ${activeNotebookId !== null ? 'font-bold' : ''}`}>Notebooks</span>
+          </button>
+
+          {/* Tab 3: Center Elevated FAB */}
+          <div className="relative flex flex-col items-center justify-end pb-0.5" style={{ marginTop: '-1.25rem' }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (activeNotebook?.default_template_id) {
+                  const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
+                  if (tpl) {
+                    setFormRunnerModal({ open: true, template: tpl });
+                    return;
+                  }
+                }
+                setMobileFabMenuOpen(!mobileFabMenuOpen);
+              }}
+              className="h-14 w-14 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center shadow-xl shadow-brand-500/40 active:scale-95 transition-all touch-manipulation ring-4 ring-zinc-950"
+              aria-label="New Item"
+            >
+              <Plus
+                className={`w-7 h-7 stroke-[2.5] transition-transform duration-200 ${
+                  mobileFabMenuOpen ? 'rotate-45' : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Tab 4: Form Templates */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveNotebookId(null);
+              setActiveFilter('templates');
+            }}
+            className={`relative flex flex-col items-center justify-center gap-0.5 py-2 px-4 rounded-2xl transition-all duration-200 touch-manipulation min-w-[52px] ${
+              activeFilter === 'templates'
+                ? 'text-brand-400'
+                : 'text-zinc-500 hover:text-zinc-300 active:text-zinc-200'
+            }`}
+          >
+            {activeFilter === 'templates' && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-brand-400 rounded-full" />
+            )}
+            <ClipboardList className="w-6 h-6" />
+            <span className={`text-[10px] font-semibold leading-none ${activeFilter === 'templates' ? 'font-bold' : ''}`}>Templates</span>
+          </button>
+
+          {/* Tab 5: Favorites */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveNotebookId(null);
+              setActiveFilter('favorites');
+            }}
+            className={`relative flex flex-col items-center justify-center gap-0.5 py-2 px-4 rounded-2xl transition-all duration-200 touch-manipulation min-w-[52px] ${
+              activeFilter === 'favorites'
+                ? 'text-amber-400'
+                : 'text-zinc-500 hover:text-zinc-300 active:text-zinc-200'
+            }`}
+          >
+            {activeFilter === 'favorites' && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-amber-400 rounded-full" />
+            )}
+            <Star className="w-6 h-6" />
+            <span className={`text-[10px] font-semibold leading-none ${activeFilter === 'favorites' ? 'font-bold' : ''}`}>Favorites</span>
           </button>
         </div>
-
-        {/* Tab 4: Form Templates */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveNotebookId(null);
-            setActiveFilter('templates');
-          }}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
-            activeFilter === 'templates'
-              ? 'text-brand-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <ClipboardList className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5 font-medium">Templates</span>
-        </button>
-
-        {/* Tab 5: Favorites */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveNotebookId(null);
-            setActiveFilter('favorites');
-          }}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
-            activeFilter === 'favorites'
-              ? 'text-amber-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Star className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5 font-medium">Favorites</span>
-        </button>
       </nav>
 
       {/* Mobile Quick Add Bottom Sheet Menu */}
       {mobileFabMenuOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden flex flex-col justify-end p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden flex flex-col justify-end animate-in fade-in duration-150"
           onClick={() => setMobileFabMenuOpen(false)}
         >
           <div
-            className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 shadow-2xl space-y-2 mb-16 animate-in slide-in-from-bottom-5 duration-200"
+            className="bg-zinc-900 border-t border-zinc-800 rounded-t-3xl shadow-2xl pb-[max(env(safe-area-inset-bottom),1rem)] animate-in slide-in-from-bottom-4 duration-250"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-2 pb-2 text-xs font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 flex items-center justify-between">
-              <span>Create New</span>
-              <button
-                type="button"
-                onClick={() => setMobileFabMenuOpen(false)}
-                className="text-zinc-500 hover:text-zinc-300 p-1"
-              >
-                ✕
-              </button>
+            {/* Sheet Handle + Header */}
+            <div className="flex flex-col items-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-zinc-700 rounded-full mb-3" />
+              <div className="w-full px-5 pb-3 flex items-center justify-between border-b border-zinc-800/80">
+                <span className="text-sm font-bold text-zinc-100">Create New</span>
+                <button
+                  type="button"
+                  onClick={() => setMobileFabMenuOpen(false)}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
+                  aria-label="Close"
+                >
+                  <ChevronLeft className="w-4 h-4 rotate-[270deg]" />
+                </button>
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setMobileFabMenuOpen(false);
-                setNoteModal({ open: true, item: null });
-              }}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
-            >
-              <div className="w-9 h-9 rounded-xl bg-brand-500/15 border border-brand-500/30 flex items-center justify-center text-brand-400 shrink-0">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-zinc-100">Markdown Note</div>
-                <div className="text-[11px] text-zinc-400">Rich WYSIWYG & markdown notes</div>
-              </div>
-            </button>
-
-            {templates.length > 0 && (
+            {/* Action Items */}
+            <div className="px-4 pt-2 pb-2 space-y-1.5">
               <button
                 type="button"
                 onClick={() => {
                   setMobileFabMenuOpen(false);
-                  const boundTpl = templates.find((t) => t.id === activeNotebook?.default_template_id);
-                  setFormRunnerModal({
-                    open: true,
-                    template: boundTpl || templates[0]
-                  });
+                  setNoteModal({ open: true, item: null });
                 }}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-[0.98] touch-manipulation min-h-[64px]"
               >
-                <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-                  <ClipboardList className="w-5 h-5" />
+                <div className="w-11 h-11 rounded-xl bg-brand-500/15 border border-brand-500/30 flex items-center justify-center text-brand-400 shrink-0">
+                  <FileText className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="text-sm font-bold text-zinc-100">Fill Form Note</div>
-                  <div className="text-[11px] text-zinc-400">Standardized form entries and logs</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-zinc-100">Markdown Note</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">Rich WYSIWYG & markdown notes</div>
                 </div>
               </button>
-            )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setMobileFabMenuOpen(false);
-                setCounterModal({ open: true, item: null });
-              }}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
-            >
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                <Hash className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-zinc-100">Interactive Counter</div>
-                <div className="text-[11px] text-zinc-400">Track counts, tallies, and habits</div>
-              </div>
-            </button>
+              {templates.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileFabMenuOpen(false);
+                    const boundTpl = templates.find((t) => t.id === activeNotebook?.default_template_id);
+                    setFormRunnerModal({
+                      open: true,
+                      template: boundTpl || templates[0]
+                    });
+                  }}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-[0.98] touch-manipulation min-h-[64px]"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                    <ClipboardList className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-zinc-100">Fill Form Note</div>
+                    <div className="text-xs text-zinc-400 mt-0.5">Standardized form entries and logs</div>
+                  </div>
+                </button>
+              )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setMobileFabMenuOpen(false);
-                setBookmarkModal({ open: true, item: null });
-              }}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
-            >
-              <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-                <Bookmark className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-zinc-100">Web Bookmark</div>
-                <div className="text-[11px] text-zinc-400">Save links with auto metadata preview</div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMobileFabMenuOpen(false);
-                setPosterModal({ open: true, item: null });
-              }}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
-            >
-              <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-                <Images className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-zinc-100">Scrapbook Poster</div>
-                <div className="text-[11px] text-zinc-400">Curate photos and visual collections</div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMobileFabMenuOpen(false);
-                setNotebookModal({ open: true, notebook: null, defaultParentId: activeNotebookId });
-              }}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-98"
-            >
-              <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300 shrink-0">
-                <Folder className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-zinc-100">
-                  {activeNotebook ? 'New Sub-Notebook' : 'New Notebook'}
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileFabMenuOpen(false);
+                  setCounterModal({ open: true, item: null });
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-[0.98] touch-manipulation min-h-[64px]"
+              >
+                <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Hash className="w-5 h-5" />
                 </div>
-                <div className="text-[11px] text-zinc-400">
-                  {activeNotebook ? `Nest inside ${activeNotebook.name}` : 'Organize into categories'}
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-zinc-100">Interactive Counter</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">Track counts, tallies, and habits</div>
                 </div>
-              </div>
-            </button>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileFabMenuOpen(false);
+                  setBookmarkModal({ open: true, item: null });
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-[0.98] touch-manipulation min-h-[64px]"
+              >
+                <div className="w-11 h-11 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <Bookmark className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-zinc-100">Web Bookmark</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">Save links with auto metadata preview</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileFabMenuOpen(false);
+                  setPosterModal({ open: true, item: null });
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-[0.98] touch-manipulation min-h-[64px]"
+              >
+                <div className="w-11 h-11 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                  <Images className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-zinc-100">Scrapbook Poster</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">Curate photos and visual collections</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileFabMenuOpen(false);
+                  setTimersModalOpen(true);
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-[0.98] touch-manipulation min-h-[64px]"
+              >
+                <div className="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-zinc-100">Timer or Reminder</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">Synced timers & alerts across all devices</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileFabMenuOpen(false);
+                  setNotebookModal({ open: true, notebook: null, defaultParentId: activeNotebookId });
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-950/60 border border-zinc-800 hover:border-zinc-700 text-left transition active:scale-[0.98] touch-manipulation min-h-[64px]"
+              >
+                <div className="w-11 h-11 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300 shrink-0">
+                  <Folder className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-zinc-100">
+                    {activeNotebook ? 'New Sub-Notebook' : 'New Notebook'}
+                  </div>
+                  <div className="text-xs text-zinc-400 mt-0.5">
+                    {activeNotebook ? `Nest inside ${activeNotebook.name}` : 'Organize into categories'}
+                  </div>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+
 
       {/* Modals */}
       {noteModal.open && (
@@ -765,6 +1052,7 @@ export const App: React.FC = () => {
           existingNote={noteModal.item}
           notebooks={notebooks}
           defaultNotebookId={activeNotebookId}
+          priorities={settings.priorities}
           onClose={() => setNoteModal({ open: false, item: null })}
           onSaved={handleItemSaved}
         />
@@ -858,6 +1146,53 @@ export const App: React.FC = () => {
           }}
         />
       )}
+
+      {/* Universal Synced Timers & Reminders Modals */}
+      <AlarmAlertModal />
+
+      <TimersAndRemindersModal
+        open={timersModalOpen}
+        onClose={() => setTimersModalOpen(false)}
+        notebooks={notebooks}
+      />
+
+      {/* Native In-App Confirmation Modal */}
+      {confirmModal.open && (
+        <ConfirmModal
+          isOpen={confirmModal.open}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText={confirmModal.confirmText}
+          cancelText={confirmModal.cancelText}
+          confirmVariant={confirmModal.confirmVariant}
+          icon={confirmModal.icon}
+          isLoading={confirmModal.isLoading}
+          onConfirm={confirmModal.onConfirm}
+          onClose={closeConfirmModal}
+        />
+      )}
+
+      {/* Settings & Preferences Modal */}
+      <SettingsModal
+        isOpen={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        currentTheme={settings.theme}
+        onThemeChange={handleThemeChange}
+        priorities={settings.priorities}
+        onPrioritiesChange={handlePrioritiesChange}
+      />
+
+      {/* Sync & Merge Conflict Resolver Modal */}
+      <ConflictResolverModal
+        isOpen={conflictModalOpen}
+        onClose={() => setConflictModalOpen(false)}
+        conflicts={conflicts}
+        onResolved={() => {
+          loadData();
+          refreshConflicts();
+        }}
+      />
     </div>
   );
 };
+

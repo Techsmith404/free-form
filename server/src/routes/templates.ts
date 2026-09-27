@@ -17,6 +17,7 @@ export async function templateRoutes(fastify: FastifyInstance) {
 
     return rows.map((r) => ({
       ...r,
+      enable_processed_tracking: Boolean(r.enable_processed_tracking ?? 1),
       fields_schema: JSON.parse(r.fields_schema || '[]')
     }));
   });
@@ -32,6 +33,7 @@ export async function templateRoutes(fastify: FastifyInstance) {
 
     return {
       ...row,
+      enable_processed_tracking: Boolean(row.enable_processed_tracking ?? 1),
       fields_schema: JSON.parse(row.fields_schema || '[]')
     };
   });
@@ -51,16 +53,18 @@ export async function templateRoutes(fastify: FastifyInstance) {
     const icon = body.icon || 'file-text';
     const color = body.color || '#3b82f6';
     const default_notebook_id = body.default_notebook_id || null;
+    const enable_processed_tracking = body.enable_processed_tracking !== undefined ? (body.enable_processed_tracking ? 1 : 0) : 1;
     const fields_schema = JSON.stringify(body.fields_schema || []);
 
     db.prepare(`
-      INSERT INTO templates (id, name, description, icon, color, default_notebook_id, fields_schema, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, description, icon, color, default_notebook_id, fields_schema, now, now);
+      INSERT INTO templates (id, name, description, icon, color, default_notebook_id, fields_schema, enable_processed_tracking, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, description, icon, color, default_notebook_id, fields_schema, enable_processed_tracking, now, now);
 
     const created = db.prepare('SELECT * FROM templates WHERE id = ?').get(id) as any;
     return reply.code(201).send({
       ...created,
+      enable_processed_tracking: Boolean(created.enable_processed_tracking ?? 1),
       fields_schema: JSON.parse(created.fields_schema || '[]')
     });
   });
@@ -84,6 +88,7 @@ export async function templateRoutes(fastify: FastifyInstance) {
         color = COALESCE(?, color),
         default_notebook_id = ?,
         fields_schema = COALESCE(?, fields_schema),
+        enable_processed_tracking = COALESCE(?, enable_processed_tracking),
         updated_at = ?
       WHERE id = ?
     `).run(
@@ -93,6 +98,7 @@ export async function templateRoutes(fastify: FastifyInstance) {
       body.color !== undefined ? body.color : null,
       body.default_notebook_id !== undefined ? body.default_notebook_id : (existing as any).default_notebook_id,
       body.fields_schema !== undefined ? JSON.stringify(body.fields_schema) : null,
+      body.enable_processed_tracking !== undefined ? (body.enable_processed_tracking ? 1 : 0) : null,
       now,
       id
     );
@@ -100,6 +106,7 @@ export async function templateRoutes(fastify: FastifyInstance) {
     const updated = db.prepare('SELECT * FROM templates WHERE id = ?').get(id) as any;
     return {
       ...updated,
+      enable_processed_tracking: Boolean(updated.enable_processed_tracking ?? 1),
       fields_schema: JSON.parse(updated.fields_schema || '[]')
     };
   });

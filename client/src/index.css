@@ -2,11 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Light Mode Palette (Default when not .dark) */
+  --color-zinc-50: 15 23 42;       /* Deepest text / headings (#0f172a) */
+  --color-zinc-100: 24 24 27;     /* High-contrast body text (#18181b) */
+  --color-zinc-200: 39 39 42;     /* Subtitles (#27272a) */
+  --color-zinc-300: 71 85 105;    /* Muted content (#475569) */
+  --color-zinc-400: 100 116 139;  /* Secondary / labels (#64748b) */
+  --color-zinc-500: 148 163 184;  /* Inactive icon / placeholder */
+  --color-zinc-600: 203 213 225;  /* Subtle divider */
+  --color-zinc-700: 226 232 240;  /* Standard border (#e2e8f0) */
+  --color-zinc-800: 241 245 249;  /* Elevated chip / input bg (#f1f5f9) */
+  --color-zinc-900: 255 255 255;  /* Card & Modal surface (#ffffff) */
+  --color-zinc-950: 248 250 252;  /* App background (#f8fafc) */
+  color-scheme: light;
+}
+
+html.dark {
+  /* Dark Mode Palette */
+  --color-zinc-50: 250 250 250;
+  --color-zinc-100: 244 244 245;
+  --color-zinc-200: 228 228 231;
+  --color-zinc-300: 212 212 216;
+  --color-zinc-400: 161 161 170;
+  --color-zinc-500: 113 113 122;
+  --color-zinc-600: 82 82 91;
+  --color-zinc-700: 63 63 70;
+  --color-zinc-800: 39 39 42;
+  --color-zinc-900: 24 24 27;
+  --color-zinc-950: 9 9 11;
+  color-scheme: dark;
+}
+
 @layer base {
   html, body {
-    @apply bg-zinc-950 text-zinc-100 font-sans;
+    @apply bg-zinc-950 text-zinc-100 font-sans transition-colors duration-150;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    /* Prevent overscroll bounce on iOS causing layout jumps */
+    overscroll-behavior: contain;
+  }
+
+  /* Momentum scrolling for iOS */
+  .overflow-y-auto,
+  .overflow-x-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure input/select font doesn't shrink on iOS focus */
+  input, select, textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+@layer utilities {
+  /* Safe area aware padding utilities */
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Touch-friendly minimum target size helper */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Active scale feedback for touch */
+  .active-scale {
+    @apply active:scale-95 transition-transform;
   }
 }
 
@@ -21,12 +88,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: rgb(var(--color-zinc-700));
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: rgb(var(--color-zinc-500));
 }
 
 /* TipTap Editor Styles */
@@ -45,7 +112,7 @@
   font-weight: 800;
   margin-top: 1.25rem;
   margin-bottom: 0.75rem;
-  color: #f4f4f5;
+  color: rgb(var(--color-zinc-50));
 }
 
 .ProseMirror h2 {
@@ -53,7 +120,7 @@
   font-weight: 700;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  color: #f4f4f5;
+  color: rgb(var(--color-zinc-100));
 }
 
 .ProseMirror h3 {
@@ -61,7 +128,80 @@
   font-weight: 600;
   margin-top: 0.75rem;
   margin-bottom: 0.5rem;
-  color: #f4f4f5;
+  color: rgb(var(--color-zinc-100));
+}
+
+/* TipTap and Prose Regular Bullet & Numbered Lists */
+.ProseMirror ul:not([data-type="taskList"]),
+.prose ul:not([data-type="taskList"]) {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ProseMirror ol,
+.prose ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ProseMirror ul:not([data-type="taskList"]) li,
+.ProseMirror ol li,
+.prose ul:not([data-type="taskList"]) li,
+.prose ol li {
+  margin-bottom: 0.25rem;
+  display: list-item;
+}
+
+.ProseMirror ul:not([data-type="taskList"]) li > p,
+.ProseMirror ol li > p {
+  margin-bottom: 0;
+  display: inline;
+}
+
+.ProseMirror ul:not([data-type="taskList"]) ul {
+  list-style-type: circle !important;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.ProseMirror ul:not([data-type="taskList"]) ul ul {
+  list-style-type: square !important;
+}
+
+.ProseMirror ol ol {
+  list-style-type: lower-alpha !important;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.ProseMirror strong,
+.ProseMirror b {
+  font-weight: 700;
+  color: rgb(var(--color-zinc-50));
+}
+
+.ProseMirror code:not(pre code) {
+  background-color: rgb(var(--color-zinc-800));
+  border: 1px solid rgb(var(--color-zinc-700));
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.375rem;
+  font-size: 0.875em;
+  color: #16a34a;
+  font-family: monospace;
+}
+
+.dark .ProseMirror code:not(pre code) {
+  color: #4ade80;
+}
+
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid rgb(var(--color-zinc-700));
+  margin: 1.5rem 0;
 }
 
 .ProseMirror ul[data-type="taskList"] {
@@ -91,13 +231,13 @@
 
 .ProseMirror th,
 .ProseMirror td {
-  border: 1px solid #3f3f46;
+  border: 1px solid rgb(var(--color-zinc-700));
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
 
 .ProseMirror th {
-  background-color: #18181b;
+  background-color: rgb(var(--color-zinc-800));
   font-weight: 600;
 }
 
@@ -105,13 +245,13 @@
   border-left: 3px solid #22c55e;
   padding-left: 1rem;
   margin: 1rem 0;
-  color: #a1a1aa;
+  color: rgb(var(--color-zinc-400));
   font-style: italic;
 }
 
 .ProseMirror pre {
-  background: #09090b;
-  border: 1px solid #27272a;
+  background: rgb(var(--color-zinc-950));
+  border: 1px solid rgb(var(--color-zinc-700));
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
   font-family: monospace;
@@ -124,5 +264,158 @@
   max-width: 100%;
   border-radius: 0.75rem;
   margin: 1rem 0;
-  border: 1px solid #27272a;
+  border: 1px solid rgb(var(--color-zinc-700));
 }
+
+/* Note Card Markdown Preview Styling */
+.note-markdown {
+  color: rgb(var(--color-zinc-200));
+  font-size: 0.875rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.note-markdown h1 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: rgb(var(--color-zinc-50));
+  margin-top: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.note-markdown h2 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: rgb(var(--color-zinc-100));
+  margin-top: 0.35rem;
+  margin-bottom: 0.2rem;
+}
+
+.note-markdown h3,
+.note-markdown h4,
+.note-markdown h5,
+.note-markdown h6 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(var(--color-zinc-100));
+  margin-top: 0.3rem;
+  margin-bottom: 0.2rem;
+}
+
+.note-markdown p {
+  margin-top: 0.2rem;
+  margin-bottom: 0.35rem;
+}
+
+.note-markdown ul:not([data-type="taskList"]) {
+  list-style-type: disc !important;
+  padding-left: 1.25rem !important;
+  margin-top: 0.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.note-markdown ol {
+  list-style-type: decimal !important;
+  padding-left: 1.25rem !important;
+  margin-top: 0.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.note-markdown li {
+  margin-top: 0.15rem;
+  margin-bottom: 0.15rem;
+  display: list-item;
+}
+
+.note-markdown li > p {
+  display: inline;
+  margin: 0;
+}
+
+.note-markdown strong,
+.note-markdown b {
+  font-weight: 700;
+  color: rgb(var(--color-zinc-50));
+}
+
+.note-markdown em,
+.note-markdown i {
+  font-style: italic;
+  color: rgb(var(--color-zinc-300));
+}
+
+.note-markdown code:not(pre code) {
+  background-color: rgb(var(--color-zinc-800));
+  border: 1px solid rgb(var(--color-zinc-700));
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.8em;
+  color: #16a34a;
+  font-family: monospace;
+}
+
+.dark .note-markdown code:not(pre code) {
+  color: #4ade80;
+}
+
+.note-markdown pre {
+  background-color: rgb(var(--color-zinc-950));
+  border: 1px solid rgb(var(--color-zinc-700));
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  margin: 0.35rem 0;
+  overflow-x: auto;
+  font-size: 0.8em;
+}
+
+.note-markdown pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.note-markdown blockquote {
+  border-left: 2px solid #22c55e;
+  padding-left: 0.5rem;
+  margin: 0.35rem 0;
+  color: rgb(var(--color-zinc-400));
+  font-style: italic;
+}
+
+.note-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  margin: 0.35rem 0;
+}
+
+.note-markdown th,
+.note-markdown td {
+  border: 1px solid rgb(var(--color-zinc-700));
+  padding: 0.25rem 0.5rem;
+}
+
+.note-markdown th {
+  background-color: rgb(var(--color-zinc-800));
+  font-weight: 600;
+}
+
+.note-markdown hr {
+  border: none;
+  border-top: 1px solid rgb(var(--color-zinc-700));
+  margin: 0.5rem 0;
+}
+
+.note-markdown input[type="checkbox"] {
+  margin-right: 0.35rem;
+  accent-color: #22c55e;
+}
+
+.note-markdown img {
+  max-height: 8rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--color-zinc-700));
+  object-fit: cover;
+  margin: 0.35rem 0;
+}
+

@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.0.0  
-> **Last Updated:** September 22, 2026  
+> **Document Version:** 1.5.0  
+> **Last Updated:** September 27, 2026 — Offline-First IndexedDB Engine, Outbox Mutation Queue, 3-Way Git-Style Sync & Visual Conflict Resolver  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -15,13 +15,17 @@
 3. [Database Schema & Data Models](#3-database-schema--data-models)
 4. [Multi-Modal Note Engines & Item Types](#4-multi-modal-note-engines--item-types)
 5. [The "Free Form" Template System](#5-the-free-form-template-system)
-6. [Notebook Hierarchy & Organization Architecture](#6-notebook-hierarchy--organization-architecture)
-7. [Card Presentation & Expansion Architecture](#7-card-presentation--expansion-architecture)
-8. [Native Mobile PWA Architecture](#8-native-mobile-pwa-architecture)
-9. [REST API Catalog & Endpoint Specifications](#9-rest-api-catalog--endpoint-specifications)
-10. [Containerization, Self-Hosting & Local Testing](#10-containerization-self-hosting--local-testing)
-11. [Critical Workarounds, Gotchas & Hard-Won Lessons](#11-critical-workarounds-gotchas--hard-won-lessons)
-12. [AI Agent Maintenance Protocol](#12-ai-agent-maintenance-protocol)
+6. [Universal Synced Timers & Reminders](#6-universal-synced-timers--reminders)
+7. [Offline-First Local Storage, Outbox & Bi-Directional Sync](#7-offline-first-local-storage-outbox--bi-directional-sync)
+8. [Notebook Hierarchy & Organization Architecture](#8-notebook-hierarchy--organization-architecture)
+9. [Card & List Presentation Architecture](#9-card--list-presentation-architecture)
+10. [Settings, Theming & Priority System](#10-settings-theming--priority-system)
+11. [Native Mobile PWA & Android APK Architecture](#11-native-mobile-pwa--android-apk-architecture)
+12. [REST API Catalog & Endpoint Specifications](#12-rest-api-catalog--endpoint-specifications)
+13. [User Accounts, Auth & Packaging Roadmap](#13-user-accounts-auth--packaging-roadmap)
+14. [Containerization, Self-Hosting & Local Testing](#14-containerization-self-hosting--local-testing)
+15. [Critical Workarounds, Gotchas & Hard-Won Lessons](#15-critical-workarounds-gotchas--hard-won-lessons)
+16. [AI Agent Maintenance Protocol](#16-ai-agent-maintenance-protocol)
 
 ---
 
@@ -36,6 +40,7 @@
 * **Local-First & Air-Gapped Autonomy:** Runs 100% self-hosted via Docker or bare Node.js with zero mandatory internet connections. Data lives in an embedded SQLite database (`freeform.db`) alongside local file uploads.
 * **Dual Representation (Form + Markdown):** Every structured form note maintains both machine-readable JSON metadata (for re-opening in form builders/runners) and clean, human-readable GitHub-flavored Markdown text.
 * **Multi-Modal Expressiveness:** Notes are not restricted to plain text; they encompass rich WYSIWYG markdown, dynamic structured forms, interactive tally counters, rich web bookmarks, and photo scrapbook collages.
+* **Universal Synced Timers & Reminders:** Set a timer or reminder on any screen and watch it stay synchronized in real time across desktop, mobile, and web. When it rings, it alerts every connected device until any one device stops it.
 * **Hierarchy Without Clutter:** Full support for nested notebook trees, accompanied by a strict "Hide from All Items" feed exclusion protocol so high-frequency logbooks do not overwhelm the main workspace feed.
 * **True Native Mobile Experience:** Progressive Web App (PWA) with a dedicated 5-tab fixed bottom navigation bar, quick-add mobile bottom sheet, hierarchical back navigation, touch targets >= 44px, and offline Workbox asset caching.
 
@@ -46,34 +51,45 @@
 ```
 free-form/
 ├── client/                     # Vite + React 18 PWA Frontend
-│   ├── public/                 # Favicons, Web Manifest, PWA PNG icons (192, 512)
+│   ├── public/                 # Favicons, Web Manifest, PWA PNG icons (192, 512), clean SVG logo
 │   ├── src/
-│   │   ├── api/                # Typed fetch client (Items, Notebooks, Templates, Uploads)
+│   │   ├── api/                # Typed fetch client (Items, Notebooks, Templates, Timers, Reminders, Dynamic Server URL)
 │   │   ├── components/
 │   │   │   ├── editor/         # TipTap WYSIWYG & Source Markdown Editor
 │   │   │   ├── forms/          # Form Runner Modal & Template Builder Modal
-│   │   │   ├── items/          # Cards: Note, FormEntry, Counter, Bookmark, Poster
-│   │   │   ├── layout/         # Sidebar (hierarchical tree), Navbar (filters, mobile back)
-│   │   │   ├── modals/         # New Notebook, Bookmark, Counter, Poster, Markdown Viewer
+│   │   │   ├── items/          # Cards: Note, FormEntry, Counter, Bookmark, Poster, ItemListItem
+│   │   │   ├── layout/         # Sidebar (hierarchical tree), Navbar (filters, mobile back, timer pill)
+│   │   │   ├── modals/         # New Notebook, Bookmark, Counter, Poster, Markdown Viewer, Timers & Reminders, AlarmAlert, SettingsModal
 │   │   │   └── views/          # Templates View
+│   │   ├── context/            # RealtimeContext (WebSocket state, auto-reconnect, cross-device sync)
+│   │   ├── services/           # Web Audio API alarm synthesizer & Native Device Service (Haptics, Local Notifications)
 │   │   ├── types/              # Frontend TypeScript Interfaces & Types
 │   │   ├── App.tsx             # Main Application Shell & Navigation Controller
 │   │   ├── index.css           # Tailwind base, touch action & custom scrollbars
-│   │   └── main.tsx            # React root & Service Worker registration
+│   │   └── main.tsx            # React root, Native App Init & Service Worker registration
 │   └── vite.config.ts          # Vite configuration & VitePWA Workbox setup
 ├── server/                     # Fastify 5 + SQLite Backend
 │   ├── src/
 │   │   ├── db/                 # better-sqlite3 connection, WAL pragma, schema & migrations
-│   │   ├── routes/             # REST routes: items, notebooks, templates, upload, export
-│   │   ├── services/           # Form-to-Markdown generation & OpenGraph scraper
+│   │   ├── routes/             # REST routes: items, notebooks, templates, timers, reminders, settings, upload, export
+│   │   ├── services/           # Form-to-Markdown generation, OpenGraph scraper & Realtime WebSocket ticker
 │   │   ├── types/              # Backend TypeScript Interfaces & Types
-│   │   ├── index.ts            # Fastify server bootstrap & static file serving
-│   │   └── index.test.ts       # Vitest unit test suite
+│   │   ├── index.ts            # Fastify server bootstrap, WebSocket gateway & static file serving (with cache-busting)
+│   │   └── index.test.ts       # Vitest unit test suite (Core, Timers, Reminders)
 │   └── tsconfig.json
+├── android/                    # Native Android Studio Project (Capacitor)
+│   ├── app/src/main/
+│   │   ├── AndroidManifest.xml # Permissions (INTERNET, ALARMS, VIBRATE) & Cleartext LAN support
+│   │   └── res/                # Native launcher mipmaps & splash drawables
+│   └── gradlew                 # Gradle wrapper for Android APK compilation
+├── capacitor.config.ts         # Capacitor Android configuration (appId: io.freeform.notes)
+├── .github/workflows/          # GitHub Actions CI/CD workflows
+│   └── build-apk.yml           # Automated Android debug APK build & release pipeline
 ├── data/                       # Persistent Host Volume (SQLite DB + Uploaded Assets)
 │   ├── freeform.db             # Primary SQLite WAL database
 │   └── uploads/                # User uploaded images and canvas signature SVGs/PNGs
 ├── scripts/
+│   ├── build-apk.sh            # Automated local/CI Android APK build script
 │   └── test-local.sh           # Automated Docker build, healthcheck & test runner
 ├── .agents/                    # Agent directives, persistent artifacts & rules
 │   ├── artifacts/              # Mirrored implementation plans & walkthroughs
@@ -91,14 +107,17 @@ free-form/
 |---|---|---|
 | **Runtime** | Node.js 20+ (LTS) / Node 22 | Modern ECMAScript, native fetch, high performance. |
 | **Backend Framework** | Fastify v5 | Extremely fast, low overhead, native TypeScript schema support. |
+| **Realtime Gateway** | `@fastify/websocket` + `ws` | Instant bidirectional event broadcast for cross-device timer synchronization. |
 | **Database** | SQLite via `better-sqlite3` | Zero-latency embedded database, synchronous execution in WAL mode. |
 | **Frontend Framework** | React 18 + TypeScript | Componentized declarative UI with strict type safety. |
+| **Audio Synthesizer** | Web Audio API (`AudioContext`) | Built-in zero-file procedural alarm chimes (zero 404s, works 100% offline). |
 | **Bundler & Tooling** | Vite 6 | Sub-second HMR and optimized production Rollup bundling. |
 | **Styling** | Tailwind CSS 3 | Utility-first styling with dark-mode aesthetic. |
 | **Rich Text Editor** | TipTap (ProseMirror core) | Headless WYSIWYG editor with seamless Markdown conversion. |
 | **Icons** | Lucide React | Lightweight, consistent SVG icon set. |
 | **PWA & Offline** | `vite-plugin-pwa` + Workbox | Cache-first asset strategy, installable manifest, offline readiness. |
 | **Containerization** | Docker + Docker Compose | One-click self-hosting with isolated persistent data volume. |
+
 
 ---
 
@@ -147,11 +166,18 @@ CREATE TABLE IF NOT EXISTS items (
   type TEXT NOT NULL,          -- 'note' | 'counter' | 'bookmark' | 'poster' | 'form_entry'
   content TEXT DEFAULT '',     -- Markdown representation
   metadata TEXT DEFAULT '{}',  -- JSON typed metadata
+  priority TEXT DEFAULT '',    -- ID of configured NotePriority ('low', 'medium', 'high', 'urgent', or custom)
   is_favorite INTEGER DEFAULT 0,
   is_pinned INTEGER DEFAULT 0,
   is_archived INTEGER DEFAULT 0,
   hide_from_all INTEGER DEFAULT 0,
   created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
@@ -176,9 +202,42 @@ CREATE TABLE IF NOT EXISTS item_tags (
   PRIMARY KEY (item_id, tag_id)
 );
 
+CREATE TABLE IF NOT EXISTS timers (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  duration_seconds INTEGER NOT NULL,
+  remaining_seconds INTEGER NOT NULL,
+  status TEXT NOT NULL, -- 'idle' | 'running' | 'paused' | 'ringing' | 'dismissed'
+  target_end_time TEXT, -- ISO string when running
+  started_at TEXT,
+  paused_at TEXT,
+  completed_at TEXT,
+  notebook_id TEXT REFERENCES notebooks(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  notes TEXT DEFAULT '',
+  due_date TEXT NOT NULL, -- ISO timestamp
+  status TEXT NOT NULL, -- 'pending' | 'triggered' | 'completed' | 'dismissed'
+  priority TEXT DEFAULT 'normal', -- 'low' | 'normal' | 'high'
+  notebook_id TEXT REFERENCES notebooks(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_notebook ON items(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(is_favorite);
+CREATE INDEX IF NOT EXISTS idx_items_hidden ON items(hide_from_all);
+CREATE INDEX IF NOT EXISTS idx_items_updated ON items(updated_at);
 CREATE INDEX IF NOT EXISTS idx_counter_history_item ON counter_history(item_id);
+CREATE INDEX IF NOT EXISTS idx_timers_status ON timers(status);
+CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_date);
 ```
 
 ### Safe Migration Protocol
@@ -223,9 +282,50 @@ When a form is submitted via [`FormRunnerModal.tsx`](file:///home/codaine/Projec
 2. [`server/src/services/markdown.ts`](file:///home/codaine/Projects/free-form/server/src/services/markdown.ts) converts the form into clean, human-readable Markdown stored in `item.content`.
 3. Users can view the note as rendered Markdown, edit it in the form runner, or export it to `.md` files.
 
+### Form Entry Processed / Seen Status Tracking
+For high-frequency form workflows (e.g. daily inspections or mobile intake logs later entered into desktop databases):
+* **Template Configuration:** Each template can enable/disable processed tracking via `enable_processed_tracking` (default: true).
+* **Metadata Persistence:** Entries store `is_processed: boolean` and `processed_at: string | null` in `item.metadata`.
+* **1-Tap Workflow:** Users can toggle processed status directly from card headers (`FormEntryCard`), list rows (`ItemListItem`), or within the Form Runner modal.
+* **"Disabled" / Grayed-Out Visual Footprint:** Processed entries render with `opacity-65 grayscale-[35%] bg-zinc-950/40 border-dashed` and a green `✓ Processed` badge, clearly distinguishing them from pending entries without actually disabling interactions.
+* **Smart Collapse:** In grid view, processed entries default to a compact, single-line footprint (`expanded = false`), keeping pending forms tall and prominent.
+
 ---
 
-## 6. Notebook Hierarchy & Organization Architecture
+## 7. Offline-First Local Storage, Outbox & Bi-Directional Sync
+
+Free Form operates with an **airtight, offline-first local architecture** that allows both the native Android APK and web PWA to function completely disconnected from the backend server without losing state across app terminations or device restarts.
+
+### 1. Persistent Local Storage Engine (`offlineDb.ts`)
+* Uses browser/WebView native **IndexedDB** (`freeform_local_db`) with dedicated stores: `items`, `notebooks`, `templates`, `reminders`, `settings`, `conflicts`, `outbox`, and `meta`.
+* **Zero-Latency Boot:** On application launch, notes and forms load instantly from IndexedDB before attempting network requests.
+* **Persistent Outbox Mutation Queue:** Offline mutations (`create_item`, `update_item`, `delete_item`, `counter_adjust`, `create_notebook`, etc.) are serialized into the `outbox` store with client timestamps and base timestamps.
+
+### 2. Bi-Directional Synchronization Protocol (`POST /api/sync`)
+* **Triggering:** Sync triggers automatically on network reconnect (`window.addEventListener('online')`), WebSocket reconnect, periodic background interval (30s), or manual trigger in Settings.
+* **Push Phase:** Pending outbox mutations are sent to `POST /api/sync` and processed in a SQLite transaction.
+* **Pull Phase:** Server returns all items, notebooks, templates, reminders, and open conflicts updated since `last_sync_timestamp`.
+* **Local Ingestion:** Processed mutations are pruned from the local outbox, server changes are written to IndexedDB, and a `freeform:sync-complete` event notifies React components to update state.
+
+### 3. Git-Inspired 3-Way Conflict Resolution
+When concurrent edits occur on multiple devices while offline:
+* **Automatic Active Promotion:** The version with the most recent timestamp automatically becomes the active note in the workspace feed.
+* **Zero Data Loss:** The conflicting version is stored in the database `conflicts` table and preserved on all devices.
+* **Attention Banners & Sidebar Badge:** An attention banner appears in the navbar and sidebar with an amber count badge.
+* **Visual Diff & Merge Modal (`ConflictResolverModal.tsx`):**
+  * Side-by-side comparison of Active vs Conflicting edits.
+  * 4 One-Click Actions:
+    1. **Keep Active:** Discards the conflict copy.
+    2. **Use Conflict Edit:** Restores the conflict version to replace the active note.
+    3. **Keep Both Notes:** Preserves both by creating a separate `[Title (Conflict Copy)]` note.
+    4. **Custom Merge:** Opens an interactive merged markdown editor to pick or combine sections.
+
+### 4. Mathematical Counter Delta Merging
+Counters do not overwrite each other during offline synchronization; instead, `counter_adjust` mutations send incremental deltas (`delta: +2`, `delta: +3`) which are mathematically added to the server count and recorded in `counter_history`.
+
+---
+
+## 8. Notebook Hierarchy & Organization Architecture
 
 ### 1. Hierarchical Nesting
 * Notebooks can have an optional `parent_id` referencing another notebook.
@@ -238,50 +338,150 @@ When a form is submitted via [`FormRunnerModal.tsx`](file:///home/codaine/Projec
 To prevent high-frequency operational notes (like daily inspections or fuel logs) from drowning out personal notes in the main feed:
 * **Notebooks:** Can be toggled with `hide_from_all = 1`. All notes belonging to this notebook are excluded from the root "All Items" feed.
 * **Individual Items:** Any individual note, counter, bookmark, or form note can be toggled with `hide_from_all = 1`.
+* **In-Notebook Visibility:** Items belonging to a hidden notebook remain 100% visible and accessible when navigating inside that specific notebook (`activeNotebookId === notebook.id`).
 * **Feed Reveal Toggle:** When browsing the global All Items feed, if hidden items exist, an interactive banner displays: `[👁 N hidden items excluded from feed (click to reveal)]`, allowing instant 1-click inspection without changing settings.
 
 ---
 
-## 7. Card Presentation & Expansion Architecture
+## 8. Card & List Presentation Architecture
 
-All item cards feature uniform styling with high contrast:
+Free Form supports two distinct, responsive browsing layouts switchable via the Navbar:
+
+### 1. Grid Card View (`viewMode === 'grid'`)
 * **Tactile Styling:** `border border-zinc-800 bg-zinc-900/95 shadow-md hover:border-zinc-700/80 active:scale-[0.98]`.
-* **Rich Form Note Previews:** [`FormEntryCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/FormEntryCard.tsx) directly renders filled field values, including golden star ratings (`★`), status badge pills, mini-tables, key-value data with units, and signature thumbnails.
+* **Color-Coded Priority Accents:** When an item has a configured priority (`items.priority`), note cards render a 3px colored left border accent matching the priority's hex color, plus an elegant badge pill (`bg-opacity-15`, border, text).
+* **Rich Form Note Previews:** [`FormEntryCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/FormEntryCard.tsx) directly renders filled field values: golden star ratings (`★`), status badge pills, mini-tables, key-value data with units, and signature thumbnails.
+* **Rich Note Card Previews:** [`NoteCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/NoteCard.tsx) parses and renders authentic GitHub-Flavored Markdown directly on the card: compact headings, visible disc bullets (`•`), numbered lists, bold typography, inline code, and checkboxes via `.note-markdown` styles.
 * **Accordion Controls:**
-  * Each form card features an individual **"Show Details" / "Less Details"** chevron toggle.
-  * The top Navbar features a global **Expand All / Collapse All** (`ChevronsUpDown`) toggle.
+  * Each form card and note card features an individual **"Show Details / Full Note" / "Collapse"** chevron toggle.
+  * When collapsed, note cards clamp to a maximum height (`max-h-40 sm:max-h-48`) with a subtle bottom gradient fade; when expanded, the full formatted markdown note is rendered.
+  * The top Navbar features a global **Expand All / Collapse All** (`ChevronsUpDown`) toggle that orchestrates both note cards and form cards simultaneously.
   * **Template-Bound Notebooks Expand by Default:** Opening a notebook bound to a form template automatically defaults all cards to expanded.
 
+### 2. Compact List View (`viewMode === 'list'`, `ItemListItem.tsx`)
+On mobile devices and narrow viewports, the grid view previously showed little visual distinction from list mode. Free Form introduces a true high-density row component:
+* **Compact Row Design (`~60px`):** Single-row layout on desktop and clean 2-line layout on mobile.
+* **Vertical Priority Indicator:** A 4px vertical colored indicator bar on the left edge denoting the note's assigned priority.
+* **Type Badge & Icon:** Color-coded type indicator (Form, Counter, Bookmark, Poster, Note).
+* **Inline Counter Actions:** Interactive tally counters can be incremented (`+`) or decremented (`-`) directly from the list row without opening any dialog.
+* **Metadata Snippet:** Form entry field count, bookmark domain / URL, poster image count, or note text snippet shown at a glance.
+* **Quick Hover Actions:** Pin, Favorite, and Delete buttons cleanly grouped with touch-friendly targets.
+
 ---
 
-## 8. Native Mobile PWA Architecture
+## 9. Settings, Theming & Priority System
 
-Free Form delivers an authentic mobile app experience on iOS and Android:
+### 1. Dedicated Settings Modal (`SettingsModal.tsx`)
+Accessible via the Navbar gear button or the Sidebar footer:
+* **Appearance Tab:** Switch between `Dark`, `Light`, and `Follow System` modes.
+* **Priorities Tab:** Full CRUD management for custom note priorities. Add, edit label, pick from preset palette or custom hex code, preview badge pill in real time, or restore defaults.
+* **System & Connection Tab:** Live WebSocket connectivity indicator, latency ping, reconnect trigger, export workspace backup ZIP, and client/server version details.
+
+### 2. Universal Light / Dark / System Palette Architecture
+Rather than maintaining hundreds of duplicate `dark:` classes, Free Form maps the complete Tailwind `zinc` palette (shades 50–950) to dynamic CSS variables:
+* In `client/tailwind.config.js`:
+  ```js
+  zinc: {
+    50: 'rgb(var(--color-zinc-50) / <alpha-value>)',
+    ...
+    950: 'rgb(var(--color-zinc-950) / <alpha-value>)'
+  }
+  ```
+* In `client/src/index.css`:
+  * `:root`: Light mode values (`zinc-950` = `#f8fafc` background, `zinc-900` = `#ffffff` cards/modals, `zinc-100` = `#18181b` text).
+  * `html.dark`: Dark mode values (`zinc-950` = `#09090b` background, `zinc-900` = `#18181b` cards/modals, `zinc-100` = `#f4f4f5` text).
+* When set to `system`, a native `window.matchMedia('(prefers-color-scheme: dark)')` listener automatically toggles `html.dark` to match OS dark/light mode instantly.
+
+### 3. Prominent Server Status & Auto-Reconnect
+* **Navbar Indicator:** Green status pill (`Connected`) with pulsing dot when active; red pulsing pill (`Offline (Retry)`) when disconnected.
+* **Top Offline Banner:** Prominent amber/red banner below Navbar showing reconnect attempt countdown and a manual "Retry Now" action.
+* **Auto-Reconnect:** Exponential backoff reconnects automatically on disconnect; immediately attempts reconnection when the browser fires the `window.online` event.
+
+---
+
+## 10. Native Mobile PWA Architecture
+
+Free Form delivers an authentic mobile app experience on iOS, Android, and foldable devices:
 
 ### 1. Fixed Bottom Navigation Bar (`lg:hidden`)
-A fixed native bottom tab bar provides immediate 1-tap navigation:
-1. **All Notes (`FileText`):** Jumps to the root feed.
-2. **Notebooks (`Folder`):** Opens the mobile notebook drawer.
-3. **Elevated Center Action (`+` FAB):** Prominent circular button with tap haptics/micro-animation.
-4. **Templates (`ClipboardList`):** Opens the form templates catalog.
-5. **Favorites (`Star`):** Filters to favorited items.
-* Fully respects mobile safe area: `pb-[max(env(safe-area-inset-bottom),0.5rem)]`.
+A fixed native bottom tab bar provides immediate 1-tap navigation with proper active indicator pill:
+1. **All Notes (`FileText`):** Jumps to the root feed. Active: green top-line indicator.
+2. **Notebooks (`Folder`):** Opens the mobile notebook drawer. Active: green top-line indicator.
+3. **Elevated Center FAB (`+`):** Prominent 56×56px circular button (up from 48px), ring-4 border with brand shadow.
+4. **Templates (`ClipboardList`):** Opens the form templates catalog. Active: green top-line indicator.
+5. **Favorites (`Star`):** Filters to favorited items. Active: amber top-line indicator.
+* Fully respects mobile safe area: `pb-[max(env(safe-area-inset-bottom),0.75rem)]`.
+* Each tab button: `min-w-[52px]`, `py-2 px-4`, sufficient for comfortable thumb navigation.
 
-### 2. Mobile Quick-Add Action Sheet
-Tapping the center `+` button opens a native slide-up bottom sheet with large (44px+) touch targets to create a Note, Form Entry, Counter, Bookmark, Scrapbook, or Sub-Notebook.
+### 2. Mobile Quick-Add Action Sheet (Bottom Sheet)
+Tapping the center `+` button opens a native **bottom-sheet** (slides from bottom of screen, no floating card). Features:
+* **Sheet handle** drag indicator at top.
+* Each action row is `min-h-[64px]` with 44×44px icon badge — very thumb-friendly.
+* Proper safe-area bottom padding: `pb-[max(env(safe-area-inset-bottom),1rem)]`.
 
-### 3. Mobile Header Back Navigation
-When navigating inside a notebook on mobile, [`Navbar.tsx`](file:///home/codaine/Projects/free-form/client/src/components/layout/Navbar.tsx) replaces the hamburger menu with a prominent **`< [Parent / All Notes]`** back button for fluid navigation.
+### 3. Full-Screen Modals on Mobile
+All modals (NoteEditorModal, FormRunnerModal, NewBookmarkModal, NewCounterModal, NewPosterModal, NewNotebookModal, MarkdownViewerModal, TemplateBuilderModal) now use a **bottom-sheet** pattern on mobile:
+* Container: `flex items-end sm:items-center` — sticks to bottom of screen on mobile.
+* Modal inner: `h-[97dvh]` on mobile, `max-h-[90vh]` on desktop. Uses `dvh` units for correct height on mobile browsers.
+* Animation: `slide-in-from-bottom-4` on mobile, `zoom-in-95` on desktop.
+* Border: top-only (`border-t`) on mobile, full (`border`) on desktop. Rounded top corners only on mobile.
 
-### 4. Touch & Gesture Polish
+### 4. Foldable Phone Support (Z Fold 6 Inner Screen)
+The inner screen of foldables like the Z Fold 6 is ~360px wide — between `sm` (640px) and the default:
+* Cards: single column at all widths below `md` (768px).
+* Navbar: compact (3px padding, 2.5px gaps) — shows full controls without overflow.
+* Type filter chips: `h-10` on mobile (from `h-9`), ensuring comfortable tap on narrow screens.
+* FAB: 56×56px — easy to hit even on 360px-wide inner screen.
+* Modals: `h-[97dvh]` fills the inner screen height precisely.
+
+### 5. Touch & Gesture Polish
+* All buttons: minimum 44×44px touch targets via explicit `h-10 w-10 flex items-center justify-center`.
+* `touch-manipulation` class on all interactive elements eliminates 300ms tap delay.
 * `-webkit-tap-highlight-color: transparent` eliminates mobile tap flashing.
-* `touch-action: manipulation` eliminates the 300ms double-tap zoom delay on buttons.
+* `overscroll-behavior: contain` prevents iOS bounce causing layout jumps.
+* `-webkit-overflow-scrolling: touch` enables momentum scrolling on iOS.
+* `font-size: max(16px, 1em)` on inputs prevents iOS auto-zoom on focus.
+* Active states: `active:scale-[0.98]` on cards, `active:scale-95` on buttons for tactile feedback.
+
+### 6. Mobile Navbar Improvements
+* **Back button:** `h-11` with pill shape and `touch-manipulation` — much easier to tap than the previous compact button.
+* **Search bar on mobile:** `h-12` input, autofocuses on open, X to clear closes the bar.
+* **Type filter chips:** `h-10 sm:h-9` — slightly taller on mobile for easier tap.
+* **Search toggle:** Shows `X` icon when open (to close), `Search` icon when closed.
+
+### 7. Native In-App Confirmation Dialogs (`ConfirmModal.tsx`)
+* **Zero Browser Popups:** All `window.confirm()` calls are replaced with custom native modals.
+* **Mobile-First Bottom Sheet:** Slides gracefully from bottom of viewport on mobile devices (`rounded-t-2xl sm:rounded-2xl`) with thumb-friendly full-width actions (`min-h-[44px]`).
+* **Desktop Centered Modal:** Smooth zoom-in (`sm:zoom-in-95`) with dark backdrop blur.
+* **Contextual Semantics:** Colored icon badges (`Trash2` for destructive red actions, `RotateCcw`/`AlertTriangle` for amber warning actions, `Info` for neutral actions).
+* **Keyboard & Accessibility:** Full `Escape` key dismissal, backdrop click-to-cancel, and async loading spinners (`Loader2`) preventing double-submissions.
+
+### 8. Brand Identity & Production Icon Suite
+* **Design Concept:** Stylized "F" ribbon lettermark flowing between sharp architectural geometry and fluid cursive ribbons. Features cyber teal/mint gradients (`#48BEB6` -> `#55DBC7`) on the upper arm, electric blue gradients (`#306ECE` -> `#3EAED7`) on the outer loop, and deep 3D underside shadows (`#0E2D40`), set against a dark indigo-charcoal rounded squircle with bevel strokes.
+* **Mathematical Vector Curves:** Authored with smooth cubic Bézier curves (`C`), eliminating all raster stair-steps, bumps, and auto-tracing artifacts.
+* **Full Production Asset Matrix:**
+  * `client/public/freeform_icon.svg` & `logo.svg`: Pure vector source masters.
+  * `client/public/pwa-512x512.png`: 512×512 HD Android splash & PWA icon.
+  * `client/public/pwa-192x192.png`: 192×192 standard mobile launcher icon.
+  * `client/public/apple-touch-icon.png`: 180×180 iOS home screen icon.
+  * `client/public/favicon.ico`: Multi-layer Windows/browser icon (16×16, 32×32, 48×48).
+
+### 9. Airtight Cache-Busting Architecture
+To guarantee that mobile devices, desktop browsers, and PWAs never use stale HTML, outdated icons, or old service worker code:
+* **Server-Side Headers (`server/src/index.ts`):** Fastify static asset middleware explicitly sends `Cache-Control: no-cache, no-store, must-revalidate` along with `Pragma: no-cache` and `Expires: 0` for `index.html`, `sw.js`, `registerSW.js`, and `manifest.webmanifest`.
+* **Immutable Content-Hashed Bundles:** Production JS and CSS under `/assets/` are fingerprinted by Vite with content hashes and served with `Cache-Control: public, max-age=31536000, immutable`.
+* **HTML Version Query Strings:** Public icon tags in `client/index.html` append cache-busting version tags (`href="/logo.svg?v=2"`, `href="/favicon.ico?v=2"`, `href="/apple-touch-icon.png?v=2"`).
+* **Workbox Precaching:** `vite-plugin-pwa` precaches all icons and bundles with cryptographic hash revisions, prompting instant background updates.
 
 ---
 
-## 9. REST API Catalog & Endpoint Specifications
+## 11. REST API Catalog & Endpoint Specifications
 
 All endpoints are hosted under `/api/*` on Fastify:
+
+### Settings & Priorities (`/api/settings`)
+* `GET /api/settings`: Returns user app settings (`theme`: `'light' | 'dark' | 'system'`, `priorities`: `NotePriority[]`).
+* `PUT /api/settings`: Updates theme mode or priority definitions.
 
 ### Notebooks (`/api/notebooks`)
 * `GET /api/notebooks`: Returns all notebooks with `item_count` and `default_template_name`.
@@ -300,8 +500,8 @@ All endpoints are hosted under `/api/*` on Fastify:
   * `search`: Searches titles and markdown content.
   * `tag`: Filters by tag name.
 * `GET /api/items/:id`: Returns single item with metadata and tags.
-* `POST /api/items`: Creates an item. If `type === 'form_entry'`, auto-generates markdown.
-* `PUT /api/items/:id`: Updates an item. If form values change, updates markdown.
+* `POST /api/items`: Creates an item (`priority?` included). If `type === 'form_entry'`, auto-generates markdown.
+* `PUT /api/items/:id`: Updates an item (`priority?` included). If form values change, updates markdown.
 * `DELETE /api/items/:id`: Soft deletes (`is_archived = 1`) or permanent delete (`?permanent=1`).
 
 ### Counter Actions (`/api/items/:id/counter`)
@@ -314,6 +514,30 @@ All endpoints are hosted under `/api/*` on Fastify:
 * `PUT /api/templates/:id`: Updates a form template.
 * `DELETE /api/templates/:id`: Deletes a form template.
 
+### Universal Synced Timers (`/api/timers`)
+* `GET /api/timers`: Returns all active, paused, and recent timers sorted by urgency.
+* `POST /api/timers`: Creates a timer (`title`, `duration_seconds`, `notebook_id?`, `auto_start?`).
+* `POST /api/timers/:id/start`: Starts or resumes a timer; sets `target_end_time` and broadcasts to all clients.
+* `POST /api/timers/:id/pause`: Freezes remaining seconds; broadcasts to all clients.
+* `POST /api/timers/:id/reset`: Resets timer to initial duration in `idle` state.
+* `POST /api/timers/:id/dismiss`: Silences a ringing timer; broadcasts dismissal to immediately stop audio on all devices.
+* `DELETE /api/timers/:id`: Permanently deletes a timer.
+
+### Scheduled Reminders (`/api/reminders`)
+* `GET /api/reminders`: Returns scheduled reminders sorted by due date and status.
+* `POST /api/reminders`: Schedules a reminder (`title`, `notes?`, `due_date`, `priority?`, `notebook_id?`).
+* `PATCH /api/reminders/:id`: Updates reminder details.
+* `POST /api/reminders/:id/complete`: Marks reminder completed.
+* `POST /api/reminders/:id/dismiss`: Dismisses active reminder alert.
+* `POST /api/reminders/:id/snooze`: Snoozes reminder by `N` minutes (`{ minutes: 5 }`).
+* `DELETE /api/reminders/:id`: Deletes a reminder.
+
+### Realtime WebSocket Gateway (`/api/ws`)
+* `GET /api/ws` (`{ websocket: true }`): Real-time bi-directional connection.
+  * **On Connect**: Server sends `{ type: 'SYNC_STATE', payload: { timers, reminders } }`.
+  * **Server Broadcasts**: `TIMER_UPDATED`, `TIMER_RING`, `TIMER_DISMISSED`, `TIMER_DELETED`, `REMINDER_TRIGGER`, `REMINDER_DISMISSED`, `REMINDER_UPDATED`, `REMINDER_DELETED`.
+  * **Client Inbound**: Sends instant actions (`DISMISS_TIMER`, `START_TIMER`, `PAUSE_TIMER`, `RESET_TIMER`, `DISMISS_REMINDER`, `COMPLETE_REMINDER`, `PING`).
+
 ### Utilities
 * `POST /api/bookmarks/scrape`: Crawls a URL to extract OpenGraph metadata (`og:title`, `og:description`, `og:image`, `favicon`).
 * `POST /api/upload`: Multipart file upload for images and signatures; saved to `./data/uploads/`.
@@ -322,7 +546,22 @@ All endpoints are hosted under `/api/*` on Fastify:
 
 ---
 
-## 10. Containerization, Self-Hosting & Local Testing
+## 12. User Accounts, Auth & Packaging Roadmap
+
+Detailed architectural blueprints and migration steps are maintained in [`.agents/artifacts/user-accounts-auth-and-packaging-roadmap.md`](file:///home/codaine/Projects/free-form/.agents/artifacts/user-accounts-auth-and-packaging-roadmap.md):
+* **Multi-Tenancy & User Isolation:** Zero-friction default (`AUTH_ENABLED=false`) for single-user local-first operation; optional `AUTH_ENABLED=true` requiring user accounts. Data isolation via `user_id` on all tables.
+* **Authentication Engine:** Argon2id password hashing, opaque signed HTTP-Only session cookies with SQLite session store (`user_sessions`), and biometric WebAuthn / Passkeys.
+* **Android APK Architecture (Capacitor):**
+  * **Configuration:** [`capacitor.config.ts`](file:///home/codaine/Projects/free-form/capacitor.config.ts) (`appId: 'io.freeform.notes'`, `cleartext: true`, `androidScheme: 'https'`).
+  * **Native Project:** Complete Android Studio project under [`android/`](file:///home/codaine/Projects/free-form/android/) with adaptive icons (`mipmap-*`) and splash drawables.
+  * **Dynamic Server Switcher:** Stored via `@capacitor/preferences` with full test and reconnect capabilities directly inside [`SettingsModal.tsx`](file:///home/codaine/Projects/free-form/client/src/components/modals/SettingsModal.tsx).
+  * **Native Background Timer Alarms:** Integrated via [`client/src/services/native.ts`](file:///home/codaine/Projects/free-form/client/src/services/native.ts) and `@capacitor/local-notifications`.
+  * **Automated CI/CD & Build Scripts:** [`.github/workflows/build-apk.yml`](file:///home/codaine/Projects/free-form/.github/workflows/build-apk.yml) compiles and attaches `free-form-vX.X.X.apk` (and `free-form.apk`) to workflow artifacts and tagged GitHub releases; [`scripts/build-apk.sh`](file:///home/codaine/Projects/free-form/scripts/build-apk.sh) provides 1-command local building.
+* **Linux Desktop Packaging (Tauri 2):** Lightweight Rust-based shell (~12MB AppImage, ~40MB RAM) producing `.AppImage`, `.deb`, and `.rpm` packages with native Plasma 6 / GNOME system tray integration and countdown timers.
+
+---
+
+## 13. Containerization, Self-Hosting & Local Testing
 
 ### Multi-Stage Dockerfile
 * **Stage 1 (`builder`):** Compiles client (Vite + TypeScript) and server (TypeScript).
@@ -341,7 +580,7 @@ Modeled after YardStik, this script provides automated zero-downtime container t
 
 ---
 
-## 11. Critical Workarounds, Gotchas & Hard-Won Lessons
+## 14. Critical Workarounds, Gotchas & Hard-Won Lessons
 
 ### 1. Android Chrome PWA Install Delay (~2 Minutes on LAN IPs)
 * **Issue:** When installing the PWA on an Android phone over a local LAN IP (e.g. `http://192.168.x.x:3000`), Chrome takes ~2 minutes before the install prompt completes.
@@ -359,7 +598,7 @@ Tailwind CSS does not generate fractional shade classes like `border-zinc-750` u
 
 ---
 
-## 12. AI Agent Maintenance Protocol
+## 15. AI Agent Maintenance Protocol
 
 Whenever an AI coding agent works in this repository:
 1. **SSoT First:** Review `SSoT.md` at session start before proposing changes.
