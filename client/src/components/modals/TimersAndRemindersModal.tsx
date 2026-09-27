@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRealtime } from '../../context/RealtimeContext.js';
 import { Notebook, Timer, Reminder } from '../../types/index.js';
-import { hapticTap, hapticMedium, hapticSuccess, isNative, setNativeSystemClockTimer } from '../../services/native.js';
+import { hapticTap, hapticMedium, hapticSuccess } from '../../services/native.js';
 import {
   X,
   Clock,
@@ -15,9 +15,9 @@ import {
   Calendar,
   AlertCircle,
   Wifi,
-  Sparkles,
-  Smartphone
+  Sparkles
 } from 'lucide-react';
+
 
 
 interface TimersAndRemindersModalProps {
@@ -281,7 +281,7 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 pt-1 flex-wrap sm:flex-nowrap">
+                <div className="flex items-center justify-between gap-3 pt-1">
                   <select
                     value={timerNotebookId}
                     onChange={(e) => setTimerNotebookId(e.target.value)}
@@ -295,36 +295,16 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                     ))}
                   </select>
 
-                  <div className="flex items-center gap-2">
-                    {isNative && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          hapticMedium();
-                          const totalSecs = timerMinutes * 60 + timerSeconds;
-                          if (totalSecs > 0) {
-                            setNativeSystemClockTimer(totalSecs, timerTitle.trim() || `${timerMinutes}m Timer`);
-                          }
-                        }}
-                        className="h-11 px-3 bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 touch-manipulation"
-                        title="Set an official timer inside your phone's Clock app (Samsung Clock / Google Clock)"
-                      >
-                        <Smartphone className="w-4 h-4 text-brand-400" />
-                        <span className="hidden sm:inline">Set in System Clock</span>
-                        <span className="sm:hidden">Clock App</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="submit"
-                      className="h-11 px-5 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-md shadow-brand-500/20 transition touch-manipulation shrink-0"
-                    >
-                      <Play className="w-4 h-4" />
-                      <span>Start Timer</span>
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className="h-11 px-5 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-md shadow-brand-500/20 transition touch-manipulation shrink-0"
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>Start Timer</span>
+                  </button>
                 </div>
               </form>
+
 
 
               {/* Active Timers List */}
@@ -423,24 +403,6 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                               <RotateCcw className="w-3.5 h-3.5" />
                             </button>
 
-                            {isNative && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  hapticMedium();
-                                  const rem = getRemainingTime(timer);
-                                  if (rem > 0) {
-                                    setNativeSystemClockTimer(rem, timer.title);
-                                  }
-                                }}
-                                className="h-9 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-brand-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition active:scale-95 touch-manipulation"
-                                title="Set this timer in your phone's native Clock app (Samsung / Google Clock)"
-                              >
-                                <Smartphone className="w-3.5 h-3.5 text-brand-400" />
-                                <span className="text-[11px] hidden sm:inline">Clock App</span>
-                              </button>
-                            )}
-
                             {isRinging && (
                               <button
                                 type="button"
@@ -453,6 +415,7 @@ export const TimersAndRemindersModal: React.FC<TimersAndRemindersModalProps> = (
                                 <span>Stop Ringing</span>
                               </button>
                             )}
+
 
                           </div>
 

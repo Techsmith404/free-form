@@ -90,10 +90,11 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (timer.status === 'running' && timer.target_end_time) {
         scheduleNativeTimerAlarm(timer.id, timer.title, new Date(timer.target_end_time));
       } else {
-        cancelNativeTimerAlarm(timer.id);
+        cancelNativeTimerAlarm(timer.id, timer.title);
       }
     });
   }, [timers]);
+
 
   // Synchronize OS-level native alarms whenever reminders change
   useEffect(() => {

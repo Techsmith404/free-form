@@ -171,7 +171,7 @@ public class NativeTimerPlugin extends Plugin {
     public void setSystemClockTimer(PluginCall call) {
         int lengthSeconds = call.getInt("lengthSeconds", 60);
         String title = call.getString("title", "Free Form Timer");
-        boolean skipUi = call.getBoolean("skipUi", false);
+        boolean skipUi = call.getBoolean("skipUi", true);
 
         try {
             Intent intent = new Intent(AlarmClock.ACTION_SET_TIMER);
@@ -193,4 +193,32 @@ public class NativeTimerPlugin extends Plugin {
             call.reject("Failed to set system timer in Clock app: " + err.getMessage());
         }
     }
+
+    @PluginMethod
+    public void dismissSystemClockTimer(PluginCall call) {
+        String title = call.getString("title", "Free Form Timer");
+        boolean skipUi = call.getBoolean("skipUi", true);
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Intent intent = new Intent(AlarmClock.ACTION_DISMISS_TIMER);
+                intent.putExtra(AlarmClock.EXTRA_MESSAGE, title);
+                intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                Context context = getContext();
+                if (context != null && intent.resolveActivity(context.getPackageManager()) != null) {
+                    context.startActivity(intent);
+                }
+            }
+            JSObject res = new JSObject();
+            res.put("success", true);
+            call.resolve(res);
+        } catch (Exception err) {
+            JSObject res = new JSObject();
+            res.put("success", false);
+            call.resolve(res);
+        }
+    }
 }
+
