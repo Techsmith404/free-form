@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.8.0  
-> **Last Updated:** September 27, 2026 — Native Alarm Engine Bug Fixes: AlarmActivity full-screen takeover, One UI lock-screen live widget (IMPORTANCE_DEFAULT), duplicate notification elimination, Stop Alarm one-tap reliability (locallyDismissedTimerIds ref + optimistic dismiss), deleted-timer AlarmManager cancellation, and native audio isolation  
+> **Document Version:** 1.8.1  
+> **Last Updated:** September 27, 2026 — AlarmActivity polished dark-teal design (animated bell, card layout, radial glow); countdown channel renamed to `timer_countdown_v2` (IMPORTANCE_DEFAULT) with auto-deletion of stale `timer_countdown_channel`  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
