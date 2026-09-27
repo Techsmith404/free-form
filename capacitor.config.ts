@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Free Form',
   webDir: 'client/dist',
   server: {
-    androidScheme: 'https',
+    androidScheme: 'http',
     cleartext: true
   },
   plugins: {

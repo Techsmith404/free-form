@@ -44,20 +44,34 @@ import { syncService } from '../services/syncService.js';
 const SERVER_URL_KEY = 'freeform_server_url';
 let cachedServerUrl: string = '';
 
+export function normalizeUrl(url: string): string {
+  let clean = url.trim().replace(/\/+$/, '');
+  if (!clean) return '';
+  if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+    // If it starts with localhost or is an IP address or port, default to http://, otherwise https://
+    clean = clean.startsWith('localhost') || /^\d+\.\d+\.\d+\.\d+/.test(clean) || /:\d+$/.test(clean)
+      ? `http://${clean}`
+      : `https://${clean}`;
+  }
+  return clean;
+}
+
 export async function initServerUrl(): Promise<string> {
   if (typeof window !== 'undefined') {
     try {
       const res = await Preferences.get({ key: SERVER_URL_KEY });
       if (res.value) {
-        cachedServerUrl = res.value.replace(/\/+$/, '');
+        cachedServerUrl = normalizeUrl(res.value);
         return cachedServerUrl;
       }
     } catch {}
-    const local = localStorage.getItem(SERVER_URL_KEY);
-    if (local) {
-      cachedServerUrl = local.replace(/\/+$/, '');
-      return cachedServerUrl;
-    }
+    try {
+      const local = localStorage.getItem(SERVER_URL_KEY);
+      if (local) {
+        cachedServerUrl = normalizeUrl(local);
+        return cachedServerUrl;
+      }
+    } catch {}
   }
   return '';
 }
@@ -65,40 +79,62 @@ export async function initServerUrl(): Promise<string> {
 export function getServerUrl(): string {
   if (cachedServerUrl) return cachedServerUrl;
   if (typeof window !== 'undefined') {
-    const local = localStorage.getItem(SERVER_URL_KEY);
-    if (local) {
-      cachedServerUrl = local.replace(/\/+$/, '');
-      return cachedServerUrl;
-    }
+    try {
+      const local = localStorage.getItem(SERVER_URL_KEY);
+      if (local) {
+        cachedServerUrl = normalizeUrl(local);
+        return cachedServerUrl;
+      }
+    } catch {}
   }
   return '';
 }
 
-export async function setServerUrl(url: string): Promise<void> {
-  const clean = url.trim().replace(/\/+$/, '');
+export async function setServerUrl(url: string): Promise<string> {
+  const clean = normalizeUrl(url);
   cachedServerUrl = clean;
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(SERVER_URL_KEY, clean);
+      if (clean) {
+        localStorage.setItem(SERVER_URL_KEY, clean);
+      } else {
+        localStorage.removeItem(SERVER_URL_KEY);
+      }
     } catch {}
     try {
-      await Preferences.set({ key: SERVER_URL_KEY, value: clean });
+      if (clean) {
+        await Preferences.set({ key: SERVER_URL_KEY, value: clean });
+      } else {
+        await Preferences.remove({ key: SERVER_URL_KEY });
+      }
     } catch {}
   }
+  return clean;
 }
 
 export function apiUrl(endpoint: string): string {
   const base = getServerUrl();
   const cleanEp = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
-  return base ? `${base}/api${cleanEp}` : `/api${cleanEp}`;
+  if (base) {
+    const cleanBase = base.replace(/\/+$/, '');
+    return `${cleanBase}/api${cleanEp}`;
+  }
+  return `/api${cleanEp}`;
 }
 
 export function getWebSocketUrl(): string {
   const base = getServerUrl();
   if (base) {
-    const isHttps = base.startsWith('https://');
-    const host = base.replace(/^https?:\/\//, '');
-    return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws`;
+    try {
+      const url = new URL(base);
+      const isHttps = url.protocol === 'https:';
+      const host = url.host;
+      return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws`;
+    } catch {
+      const isHttps = base.startsWith('https://');
+      const host = base.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws`;
+    }
   }
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const host = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';

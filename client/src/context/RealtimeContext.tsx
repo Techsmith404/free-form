@@ -115,11 +115,18 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       reconnectTimeoutRef.current = null;
     }
     if (socketRef.current) {
-      socketRef.current.close();
+      socketRef.current.onopen = null;
+      socketRef.current.onclose = null;
+      socketRef.current.onerror = null;
+      socketRef.current.onmessage = null;
+      try {
+        socketRef.current.close();
+      } catch {}
       socketRef.current = null;
     }
     setIsConnecting(true);
     isConnectingRef.current = true;
+    setReconnectAttempt(0);
     refreshState();
     syncService.performSync().catch(() => {});
     connectRef.current();

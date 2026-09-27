@@ -496,10 +496,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         try {
                           setTestingConnection(true);
                           setConnectionTestResult(null);
-                          await setServerUrl(serverUrl);
-                          const res = await fetch(apiUrl('/settings'));
+                          const saved = await setServerUrl(serverUrl);
+                          setServerUrlInput(saved);
+                          const res = await fetch(apiUrl('/health'));
                           if (res.ok) {
-                            setConnectionTestResult({ success: true, message: 'Server reached successfully!' });
+                            setConnectionTestResult({ success: true, message: `Connected! Target: ${saved || 'default'}` });
                             manualReconnect();
                           } else {
                             setConnectionTestResult({ success: false, message: `Server error: HTTP ${res.status}` });

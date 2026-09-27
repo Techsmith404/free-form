@@ -20,7 +20,8 @@ import { conflictsRoutes } from './routes/conflicts.js';
 import { addClient, startRealtimeTicker, stopRealtimeTicker } from './services/realtime.js';
 
 const app = fastify({
-  logger: true
+  logger: true,
+  trustProxy: true
 });
 
 async function main() {
@@ -30,7 +31,9 @@ async function main() {
   // 2. Plugins
   await app.register(cors, {
     origin: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['*'],
+    credentials: true
   });
 
   await app.register(websocket);

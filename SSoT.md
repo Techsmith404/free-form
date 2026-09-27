@@ -552,7 +552,7 @@ Detailed architectural blueprints and migration steps are maintained in [`.agent
 * **Multi-Tenancy & User Isolation:** Zero-friction default (`AUTH_ENABLED=false`) for single-user local-first operation; optional `AUTH_ENABLED=true` requiring user accounts. Data isolation via `user_id` on all tables.
 * **Authentication Engine:** Argon2id password hashing, opaque signed HTTP-Only session cookies with SQLite session store (`user_sessions`), and biometric WebAuthn / Passkeys.
 * **Android APK Architecture (Capacitor):**
-  * **Configuration:** [`capacitor.config.ts`](file:///home/codaine/Projects/free-form/capacitor.config.ts) (`appId: 'io.freeform.notes'`, `cleartext: true`, `androidScheme: 'https'`).
+  * **Configuration:** [`capacitor.config.ts`](file:///home/codaine/Projects/free-form/capacitor.config.ts) (`appId: 'io.freeform.notes'`, `cleartext: true`, `androidScheme: 'http'`).
   * **Native Project:** Complete Android Studio project under [`android/`](file:///home/codaine/Projects/free-form/android/) with adaptive icons (`mipmap-*`) and splash drawables.
   * **Dynamic Server Switcher:** Stored via `@capacitor/preferences` with full test and reconnect capabilities directly inside [`SettingsModal.tsx`](file:///home/codaine/Projects/free-form/client/src/components/modals/SettingsModal.tsx).
   * **Native Background Timer Alarms:** Integrated via [`client/src/services/native.ts`](file:///home/codaine/Projects/free-form/client/src/services/native.ts) and `@capacitor/local-notifications`.
@@ -582,18 +582,25 @@ Modeled after YardStik, this script provides automated zero-downtime container t
 
 ## 14. Critical Workarounds, Gotchas & Hard-Won Lessons
 
-### 1. Android Chrome PWA Install Delay (~2 Minutes on LAN IPs)
+### 1. Android Capacitor `androidScheme: 'http'` for Mixed ws:// and wss://
+* **Issue:** When `androidScheme` was set to `'https'`, Chromium WebView blocked unencrypted WebSocket (`ws://`) connections to local LAN / Tailscale IPs due to Strict Mixed Content security policies.
+* **Resolution:** Configure `androidScheme: 'http'` in `capacitor.config.ts`. This permits both unencrypted `ws://` connections to LAN/Tailscale IPs as well as secure `wss://` connections to Cloudflare Tunnels and reverse proxy domains.
+
+### 2. Reverse Proxies & Cloudflare Tunnels (`trustProxy: true`)
+* Fastify requires `trustProxy: true` to properly parse headers (`x-forwarded-proto`, `x-forwarded-host`) from reverse proxies and Cloudflare Tunnels.
+
+### 3. Android Chrome PWA Install Delay (~2 Minutes on LAN IPs)
 * **Issue:** When installing the PWA on an Android phone over a local LAN IP (e.g. `http://192.168.x.x:3000`), Chrome takes ~2 minutes before the install prompt completes.
 * **Root Cause:** Chrome on Android attempts to mint a native **WebAPK** package via Google's cloud servers (`webapk.googleapis.com`). Because private RFC 1918 IPs cannot be reached from the public internet, Google's minting server hangs until its 90–120s connection timeout expires, then falls back to a home screen shortcut.
 * **Resolution:** This is standard Android behavior for private LAN IPs. Once deployed to a public domain with HTTPS (or via a tunnel like Cloudflare Tunnel or Tailscale Funnel), installation completes in **2–5 seconds**.
 
-### 2. Web Manifest Requirements
+### 4. Web Manifest Requirements
 Chrome strictly requires `start_url: "/"`, `scope: "/"`, `id: "/"`, and valid physical PNG icons (192x192 and 512x512) in `client/public/`. Without physical PNGs, Chrome refuses to trigger the native PWA install prompt.
 
-### 3. Tailwind CSS Color Class Validation
+### 5. Tailwind CSS Color Class Validation
 Tailwind CSS does not generate fractional shade classes like `border-zinc-750` unless explicitly defined in `tailwind.config.js`. Using undefined color classes fails silently and produces transparent/missing borders. Always use standard palette values (e.g. `border-zinc-800`, `border-zinc-700/80`).
 
-### 4. Database Foreign Keys and WAL Mode
+### 6. Database Foreign Keys and WAL Mode
 `better-sqlite3` requires explicit execution of `PRAGMA foreign_keys = ON;` on every database connection. Without it, `ON DELETE CASCADE` and `ON DELETE SET NULL` constraints are silently ignored by SQLite.
 
 ---
