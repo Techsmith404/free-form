@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.7.0  
-> **Last Updated:** September 27, 2026 — Native Android Timer Engine, Persistent Lock-Screen Chronometer, System Alarm Ringtone Audio & Bi-Directional Cross-Device WebSocket Synchronization  
+> **Document Version:** 1.8.0  
+> **Last Updated:** September 27, 2026 — Native Alarm Engine Bug Fixes: AlarmActivity full-screen takeover, One UI lock-screen live widget (IMPORTANCE_DEFAULT), duplicate notification elimination, Stop Alarm one-tap reliability (locallyDismissedTimerIds ref + optimistic dismiss), deleted-timer AlarmManager cancellation, and native audio isolation  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -633,7 +633,50 @@ Tailwind CSS does not generate fractional shade classes like `border-zinc-750` u
 ### 6. Database Foreign Keys and WAL Mode
 `better-sqlite3` requires explicit execution of `PRAGMA foreign_keys = ON;` on every database connection. Without it, `ON DELETE CASCADE` and `ON DELETE SET NULL` constraints are silently ignored by SQLite.
 
----
+### 7. Native Android Alarm Engine — Hard-Won Lessons
+
+#### Duplicate notifications (triple-fire)
+When a timer expires three notification systems were all firing independently:
+1. `NativeTimer.startCountdownNotification` (Capacitor plugin, ID range 880000+)
+2. `LocalNotifications.schedule` (Capacitor JS, separate ID range via getDeterministicNotifId)
+3. `NativeAlarmReceiver` via `AlarmManager` (ID range 990000+)
+
+**Resolution:** Remove `LocalNotifications.schedule` for timer completion entirely. `AlarmManager` + `NativeAlarmReceiver` is the single authoritative alarm delivery path. Only `LocalNotifications` for _reminders_ (not timers) is acceptable.
+
+#### Stop Alarm flicker / re-ring loop
+The in-app JS 1-second local ticker `setInterval` was re-setting dismissed timers back to `ringing` status because it checked `timer.status === 'running'` and `target_end_time <= now` without knowing the timer had been dismissed. Between the tap and the server `TIMER_DISMISSED` broadcast, the ticker fired and re-triggered the alarm modal.
+
+**Resolution:**
+1. **`locallyDismissedTimerIds`** — A `useRef<Set<string>>` in `RealtimeContext` tracks IDs dismissed locally. The ticker skips any ID in this set. IDs are added at the top of `dismissTimer()` (synchronously, before any async calls).
+2. **Optimistic state update** — `dismissTimer()` calls `setTimers(prev => prev.map(...status:'dismissed'))` immediately before sending the WebSocket message or REST call, so the alarm modal closes instantly.
+3. The ref is also checked in the `onNativeTimerAction('ring')` handler to prevent re-ringing a timer that was dismissed by another device.
+
+#### Full-screen alarm on lock screen requires AlarmActivity, not MainActivity
+`setFullScreenIntent` pointing to `MainActivity` does not reliably produce a full-screen takeover on Samsung One UI because `MainActivity` is a `singleTask` Capacitor WebView with complex launch flags. The OS may choose to post a heads-up banner instead.
+
+**Resolution:** Create a dedicated `AlarmActivity` with `showWhenLocked="true"`, `turnScreenOn="true"`, `noHistory="true"`, `excludeFromRecents="true"`, styled with a simple dark alarm UI. Point both `setFullScreenIntent` and `context.startActivity()` at `AlarmActivity` from `NativeAlarmReceiver.onReceive`. The direct `startActivity` call ensures immediate display even on One UI.
+
+#### One UI lock-screen live countdown widget requires IMPORTANCE_DEFAULT
+Notification channels created with `IMPORTANCE_LOW` are suppressed from One UI's live notification "At a Glance" widget at the bottom of the lock screen. Only `IMPORTANCE_DEFAULT` and above qualify.
+
+**Resolution:** Change the countdown channel from `NotificationManager.IMPORTANCE_LOW` to `NotificationManager.IMPORTANCE_DEFAULT` and pair with `setSound(null, null)` + `enableVibration(false)` to keep it silent but prominently visible.
+
+**NOTE:** Notification channels cannot be changed after creation. If the old channel exists on the device with IMPORTANCE_LOW, the user must clear app data or manually change channel importance in Android Settings → Apps → Free Form → Notifications.
+
+#### AlarmManager cancel must use FLAG_NO_CREATE
+When cancelling an `AlarmManager` `PendingIntent`, use `FLAG_NO_CREATE` (not `FLAG_UPDATE_CURRENT`). `FLAG_UPDATE_CURRENT` creates a new PendingIntent if one doesn't exist, which does nothing useful and wastes resources. `FLAG_NO_CREATE` returns `null` if no matching intent exists (safe) and cancels it if it does.
+
+#### Native audio vs. Web Audio isolation
+On native Android, `NativeAlarmReceiver` plays the system alarm ringtone via `AlarmSoundManager` (using `RingtoneManager.TYPE_ALARM`). The JS layer's `startAlarmChime()` (Web Audio API synthesizer) must NOT be called on native. Running both simultaneously creates audio conflict.
+
+**Resolution:** In `RealtimeContext`, wrap `startAlarmChime()` in `if (!isNative)`. The native alarm audio is entirely managed by `AlarmSoundManager.java` and stopped by `stopNativeAlarmSound()` → `NativeTimer.stopAlarm()` → `AlarmSoundManager.stopAlarm()`.
+
+#### `onNativeTimerAction` listener must use refs to avoid stale closures
+Registering `onNativeTimerAction` with an empty dependency array (`[]`) means the callback captures `dismissTimer` at mount time — when `socketRef.current` is `null`. Subsequent calls to `dismissTimer` via the listener will attempt to send to a null socket.
+
+**Resolution:** Keep mutable refs `dismissTimerRef.current` and `pauseTimerRef.current` updated on every render (by assigning at the top of the component body). The stable listener (empty `[]`) calls through the ref, always accessing the latest function closure.
+
+
 
 ## 15. AI Agent Maintenance Protocol
 

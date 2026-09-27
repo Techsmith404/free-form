@@ -46,10 +46,15 @@ Most note apps force you into one of two extremes:
 * **Feed Reveal Toggle**: A 1-click banner above your notes reveals hidden items whenever you want to inspect them without digging through settings.
 
 ### 4. 📱 Native Mobile PWA & Android APK Polish
-* **First-Party Native Android Timer Engine & Sticky Chronometer**: Running timers display an active, persistent notification in the Android notification shade and lock screen with a native live ticking chronometer (`setUsesChronometer(true)`, `setChronometerCountDown(true)`). It is sticky (`setOngoing(true)`, `FLAG_NO_CLEAR`), meaning it stays pinned even if you tap "Clear all notifications".
-* **Interactive Lock-Screen Controls**: Notification cards on the lock screen feature direct `[⏸ Pause]` and `[⏹ Stop]` actions that communicate natively back to the WebSocket engine.
-* **OS-Level System Alarm Ringtone & Heads-Up Modal**: When the timer expires, `AlarmManager` triggers a high-priority heads-up alert (`setFullScreenIntent`) that wakes the screen and loops your phone's actual system alarm ringtone (`RingtoneManager.TYPE_ALARM`) and custom vibration pattern until stopped.
-* **100% True Bi-Directional Cross-Device WebSocket Sync**: Dismissing or pausing the alarm on your phone immediately silences your desktop and laptop screens via WebSockets; stopping the timer on desktop or web instantly silences the phone ringtone and clears the notification.
+* **Full-Screen Alarm Takeover**: When a timer expires, `AlarmManager` fires `NativeAlarmReceiver` which immediately launches `AlarmActivity` — a dedicated full-screen activity that turns the screen on, overlays the lock screen, and presents a bold **STOP ALARM** button. No notification interaction required.
+* **System Alarm Ringtone**: The expiry alarm uses your phone's actual system alarm sound (`RingtoneManager.TYPE_ALARM`) with looping vibration — plays until explicitly stopped.
+* **One UI Lock-Screen Live Countdown**: Active timers post an `IMPORTANCE_DEFAULT` sticky notification with `setUsesChronometer(true)` + `setChronometerCountDown(true)`, qualifying it for Samsung One UI's "At a Glance" live widget at the bottom of the lock screen. Survives "Clear All."
+* **Interactive Lock-Screen Controls**: `[⏸ Pause]` and `[⏹ Stop]` notification actions communicate natively back to the app and WebSocket engine for cross-device sync.
+* **Single-Tap Reliable Stop**: A `locallyDismissedTimerIds` ref in `RealtimeContext` prevents the JS 1-second ticker from re-ringing a dismissed timer. Optimistic local state update ensures the alarm modal closes before the server round-trip.
+* **No Duplicate Notifications**: Single `AlarmManager` + `NativeAlarmReceiver` path — no parallel `LocalNotifications` for timers. One timer = one alarm notification.
+* **Bi-Directional Cross-Device Sync**: Dismissing on any connected device silences all others via WebSocket broadcast. Deleting a timer also cancels its `AlarmManager` entry.
+* **Audio Isolation**: On native, Web Audio API synthesizer is bypassed — only `AlarmSoundManager.java` plays. On web/PWA, only the Web Audio chime plays. No dual-audio conflict.
+
 * **Zero Status Bar Overlap**: Native status bar overlay is disabled (`overlay: false`) and coupled with dynamic CSS safe-area padding (`env(safe-area-inset-top)`), guaranteeing the Android clock, battery, and notification bar never overlap navbar icons or titles.
 * **Live Top Bar Countdown Ticker**: Active timers update second-by-second directly inside the top navbar pill without needing to open the timers modal.
 * **Refined Tactile Haptics**: Subtle, ultra-light mechanical tick on button and tab taps (`selectionChanged`), gentle bump on counter tallies (`ImpactStyle.Light`), and firm pulses on deletions and alarms.
