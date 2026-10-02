@@ -14,10 +14,13 @@ import {
   Plus,
   Minus,
   CheckCircle2,
-  Circle
+  Circle,
+  CheckSquare,
+  List
 } from 'lucide-react';
 import { counterAction } from '../../api/index.js';
 import { hapticMedium, hapticTap } from '../../services/native.js';
+import { analyzeNoteContent } from '../../utils/markdownList.js';
 
 interface ItemListItemProps {
   item: Item;
@@ -73,12 +76,28 @@ export const ItemListItem: React.FC<ItemListItemProps> = ({
           bg: 'bg-purple-500/10 text-purple-400 border-purple-500/25'
         };
       case 'note':
-      default:
+      default: {
+        const analysis = analyzeNoteContent(item.content, item.title);
+        if (analysis.isChecklist) {
+          return {
+            icon: <CheckSquare className="w-4 h-4 text-indigo-400" />,
+            label: 'Checklist',
+            bg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/25'
+          };
+        }
+        if (analysis.isStandardList) {
+          return {
+            icon: <List className="w-4 h-4 text-sky-400" />,
+            label: 'List',
+            bg: 'bg-sky-500/10 text-sky-400 border-sky-500/25'
+          };
+        }
         return {
           icon: <FileText className="w-4 h-4 text-brand-400" />,
           label: 'Note',
           bg: 'bg-zinc-800 text-zinc-300 border-zinc-700/60'
         };
+      }
     }
   };
 
@@ -129,11 +148,14 @@ export const ItemListItem: React.FC<ItemListItemProps> = ({
       case 'form_entry':
         return item.metadata?.template_name ? `Form: ${item.metadata.template_name}` : 'Form entry';
       case 'note':
-      default:
-        const raw = (item.content || '').replace(/[#*_`~>-]/g, '').trim();
-        return raw.slice(0, 80) || 'Empty note';
+      default: {
+        const analysis = analyzeNoteContent(item.content, item.title);
+        return analysis.summaryText;
+      }
     }
   };
+
+  const noteAnalysis = item.type === 'note' ? analyzeNoteContent(item.content, item.title) : null;
 
   return (
     <div
@@ -169,6 +191,22 @@ export const ItemListItem: React.FC<ItemListItemProps> = ({
             }`}>
               {item.title}
             </h4>
+
+            {/* Checklist progress pill in List view */}
+            {noteAnalysis && noteAnalysis.hasChecklist && (
+              <span
+                className={`h-5 px-1.5 rounded flex items-center gap-1 text-[11px] font-semibold border shrink-0 ${
+                  noteAnalysis.checkedCount === noteAnalysis.checklistCount && noteAnalysis.checklistCount > 0
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    : 'bg-zinc-800 text-zinc-300 border-zinc-700/60'
+                }`}
+              >
+                <CheckSquare className="w-2.5 h-2.5 text-indigo-400" />
+                <span>
+                  {noteAnalysis.checkedCount}/{noteAnalysis.checklistCount}
+                </span>
+              </span>
+            )}
 
             {/* 1-Tap Processed Button in List Row */}
             {item.type === 'form_entry' && (

@@ -762,6 +762,7 @@ export const App: React.FC = () => {
                             priorities={settings.priorities}
                             isExpanded={expandAllCards}
                             onOpen={(it) => setNoteModal({ open: true, item: it })}
+                            onUpdate={handleItemSaved}
                             onToggleFavorite={handleToggleFavorite}
                             onTogglePin={handleTogglePin}
                             onDelete={handleDeleteItem}

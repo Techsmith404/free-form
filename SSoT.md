@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.9.1  
-> **Last Updated:** September 27, 2026 — Samsung Now Bar Live Countdown: Dynamic 1-second foreground service ticker updating `contentText` (MM:SS / H:MM:SS) for native ticking numbers in Samsung One UI lock-screen capsule and status bar chip  
+> **Document Version:** 1.9.2  
+> **Last Updated:** October 2, 2026 — Interactive Checklists & Special List Cards: Direct 1-tap checkbox toggling on card previews, dedicated Checklist & List card styles with visual progress tracking, and enhanced list view badges  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -351,20 +351,24 @@ Free Form supports two distinct, responsive browsing layouts switchable via the 
 * **Tactile Styling:** `border border-zinc-800 bg-zinc-900/95 shadow-md hover:border-zinc-700/80 active:scale-[0.98]`.
 * **Color-Coded Priority Accents:** When an item has a configured priority (`items.priority`), note cards render a 3px colored left border accent matching the priority's hex color, plus an elegant badge pill (`bg-opacity-15`, border, text).
 * **Rich Form Note Previews:** [`FormEntryCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/FormEntryCard.tsx) directly renders filled field values: golden star ratings (`★`), status badge pills, mini-tables, key-value data with units, and signature thumbnails.
-* **Rich Note Card Previews:** [`NoteCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/NoteCard.tsx) parses and renders authentic GitHub-Flavored Markdown directly on the card: compact headings, visible disc bullets (`•`), numbered lists, bold typography, inline code, and checkboxes via `.note-markdown` styles.
+* **Rich Note Card Previews & Interactive Checklists:** [`NoteCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/NoteCard.tsx) parses and renders authentic GitHub-Flavored Markdown directly on the card with `.note-markdown` styles. Checklists rendered in note previews feature interactive, touch-friendly checkboxes with instant optimistic toggling and backend persistence.
+* **Special Checklist & List Card Styles (`ListCard.tsx`):** When a note is predominantly or entirely a checklist or list (analyzed via `markdownList.ts`), it is automatically elevated into a dedicated special card presentation (akin to `CounterCard`):
+  * **Checklist Mode:** Violet/Indigo theme badge (`[Checklist]`), live completion progress pill (`X/Y done` or `✓ All completed`), responsive visual progress bar, tactile checkbox buttons with smooth animations, strikethrough styling for completed items, and hierarchical indent support.
+  * **Standard List Mode:** Sky/Cyan theme badge (`[List]`), item count badge, circular numbered pills (`1`, `2`, `3`) or glowing cyan bullets, refined row spacing, and overflow accordion.
 * **Accordion Controls:**
-  * Each form card and note card features an individual **"Show Details / Full Note" / "Collapse"** chevron toggle.
-  * When collapsed, note cards clamp to a maximum height (`max-h-40 sm:max-h-48`) with a subtle bottom gradient fade; when expanded, the full formatted markdown note is rendered.
-  * The top Navbar features a global **Expand All / Collapse All** (`ChevronsUpDown`) toggle that orchestrates both note cards and form cards simultaneously.
+  * Each form card, note card, and list card features an individual **"Show Details / Full Note" / "Collapse"** chevron toggle.
+  * When collapsed, note cards clamp to a maximum height (`max-h-40 sm:max-h-48`) with a subtle bottom gradient fade; list cards show the first 5 items with a "+ N more items" pill; when expanded, the full formatted note or list is rendered.
+  * The top Navbar features a global **Expand All / Collapse All** (`ChevronsUpDown`) toggle that orchestrates cards simultaneously.
   * **Template-Bound Notebooks Expand by Default:** Opening a notebook bound to a form template automatically defaults all cards to expanded.
 
 ### 2. Compact List View (`viewMode === 'list'`, `ItemListItem.tsx`)
 On mobile devices and narrow viewports, the grid view previously showed little visual distinction from list mode. Free Form introduces a true high-density row component:
 * **Compact Row Design (`~60px`):** Single-row layout on desktop and clean 2-line layout on mobile.
 * **Vertical Priority Indicator:** A 4px vertical colored indicator bar on the left edge denoting the note's assigned priority.
-* **Type Badge & Icon:** Color-coded type indicator (Form, Counter, Bookmark, Poster, Note).
+* **Type Badge & Icon:** Color-coded type indicator with specialized icons: Form (Clipboard), Counter (Hash), Bookmark (Bookmark), Poster (Images), Checklist (CheckSquare in indigo), List (List in sky), and Note (FileText in brand).
 * **Inline Counter Actions:** Interactive tally counters can be incremented (`+`) or decremented (`-`) directly from the list row without opening any dialog.
-* **Metadata Snippet:** Form entry field count, bookmark domain / URL, poster image count, or note text snippet shown at a glance.
+* **Metadata & Progress Snippet:** Form entry field count, bookmark domain / URL, poster image count, checklist completion (`3/5 done • Items...`), or note text snippet shown at a glance.
+* **Checklist Progress Pill:** Inline compact `X/Y` completion badge on the row header.
 * **Quick Hover Actions:** Pin, Favorite, and Delete buttons cleanly grouped with touch-friendly targets.
 
 ---

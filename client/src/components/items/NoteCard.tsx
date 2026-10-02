@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Item, Tag, NotePriority } from '../../types/index.js';
-import { marked } from 'marked';
-import { FileText, Star, Pin, Trash2, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileText, Star, Pin, Trash2, EyeOff, ChevronDown, ChevronUp, CheckSquare } from 'lucide-react';
+import { updateItem } from '../../api/index.js';
 import { hapticTap } from '../../services/native.js';
+import {
+  analyzeNoteContent,
+  renderInteractiveMarkdownHtml,
+  toggleChecklistItemByIndex
+} from '../../utils/markdownList.js';
+import { ListCard } from './ListCard.js';
 
 interface NoteCardProps {
   item: Item;
   priorities?: NotePriority[];
   isExpanded?: boolean;
   onOpen: (item: Item) => void;
+  onUpdate?: (updated: Item) => void;
   onToggleFavorite: (item: Item) => void;
   onTogglePin: (item: Item) => void;
   onDelete: (id: string) => void;
@@ -19,11 +26,18 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   priorities = [],
   isExpanded = false,
   onOpen,
+  onUpdate,
   onToggleFavorite,
   onTogglePin,
   onDelete
 }) => {
-  const priority = priorities.find((p) => p.id === item.priority);
+  // Local content state to provide instant optimistic feedback when ticking checkboxes
+  const [localContent, setLocalContent] = useState<string>(item.content || '');
+
+  useEffect(() => {
+    setLocalContent(item.content || '');
+  }, [item.content]);
+
   // Local card expand override: null means inherit from parent isExpanded
   const [localExpanded, setLocalExpanded] = useState<boolean | null>(null);
 
@@ -34,11 +48,70 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 
   const expanded = localExpanded !== null ? localExpanded : isExpanded;
 
-  // Render markdown to formatted HTML
+  // Analyze content to see if it qualifies for the special List/Checklist Card presentation
+  const analysis = useMemo(
+    () => analyzeNoteContent(localContent, item.title),
+    [localContent, item.title]
+  );
+
+  // If the note is predominantly a checklist or list, elevate to the special ListCard presentation
+  if (analysis.isMajorityList) {
+    return (
+      <ListCard
+        item={item}
+        priorities={priorities}
+        isExpanded={isExpanded}
+        onOpen={onOpen}
+        onUpdate={onUpdate}
+        onToggleFavorite={onToggleFavorite}
+        onTogglePin={onTogglePin}
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  const priority = priorities.find((p) => p.id === item.priority);
+
+  // Render markdown to formatted HTML with interactive checkboxes
   const parsedHtml = useMemo(() => {
-    if (!item.content || !item.content.trim()) return '';
-    return marked.parse(item.content) as string;
-  }, [item.content]);
+    return renderInteractiveMarkdownHtml(localContent);
+  }, [localContent]);
+
+  // Handle clicking checklist checkboxes directly inside the note card preview
+  const handleMarkdownClick = async (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const checkboxInput = target.closest('input[type="checkbox"][data-checklist-index]') as HTMLInputElement | null;
+    if (!checkboxInput) return;
+
+    // Stop event propagation so card open modal is not triggered
+    e.stopPropagation();
+    const rawIdx = checkboxInput.getAttribute('data-checklist-index');
+    if (rawIdx === null) return;
+
+    const checklistIndex = parseInt(rawIdx, 10);
+    if (isNaN(checklistIndex)) return;
+
+    hapticTap();
+    const nextContent = toggleChecklistItemByIndex(localContent, checklistIndex);
+    setLocalContent(nextContent);
+
+    const optimisticItem: Item = {
+      ...item,
+      content: nextContent,
+      updated_at: new Date().toISOString()
+    };
+    if (onUpdate) onUpdate(optimisticItem);
+
+    try {
+      const updated = await updateItem(item.id, { content: nextContent });
+      if (onUpdate) onUpdate(updated);
+    } catch (err) {
+      console.error('Failed to toggle checklist item in note preview', err);
+      // Revert optimistic change
+      setLocalContent(item.content);
+      if (onUpdate) onUpdate(item);
+    }
+  };
 
   return (
     <div
@@ -61,6 +134,17 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               <FileText className="w-3.5 h-3.5 text-brand-400" />
               <span>Note</span>
             </span>
+
+            {/* Checklist progress badge if note contains any checklist items */}
+            {analysis.hasChecklist && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-md border bg-indigo-500/10 text-indigo-300 border-indigo-500/30 shrink-0">
+                <CheckSquare className="w-3 h-3 text-indigo-400" />
+                <span>
+                  {analysis.checkedCount}/{analysis.checklistCount}
+                </span>
+              </span>
+            )}
+
             {priority && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-md border shrink-0"
@@ -149,7 +233,6 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
-
         </div>
 
         {/* Title */}
@@ -157,7 +240,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           {item.title}
         </h3>
 
-        {/* Formatted Markdown Preview */}
+        {/* Formatted Markdown Preview with Clickable Checkboxes */}
         {parsedHtml ? (
           <div
             className={`mt-2.5 transition-all duration-200 ${
@@ -168,6 +251,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           >
             <div
               className="note-markdown"
+              onClick={handleMarkdownClick}
               dangerouslySetInnerHTML={{ __html: parsedHtml }}
             />
           </div>
@@ -181,7 +265,11 @@ export const NoteCard: React.FC<NoteCardProps> = ({
       {/* Card Footer */}
       <div className="mt-5 pt-3 border-t border-zinc-800/90 flex items-center justify-between text-xs text-zinc-400">
         <span className="font-medium">
-          {new Date(item.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+          {new Date(item.updated_at).toLocaleDateString([], {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })}
         </span>
         {item.tags && item.tags.length > 0 && (
           <div className="flex gap-1.5 overflow-hidden">
@@ -189,7 +277,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               const name = typeof t === 'string' ? t : t.name;
               const key = typeof t === 'string' ? `${t}-${idx}` : t.id;
               return (
-                <span key={key} className="text-xs text-zinc-300 px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700/60 font-medium">
+                <span
+                  key={key}
+                  className="text-xs text-zinc-300 px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700/60 font-medium"
+                >
                   #{name}
                 </span>
               );

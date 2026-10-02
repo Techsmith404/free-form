@@ -407,8 +407,19 @@ html.dark {
 }
 
 .note-markdown input[type="checkbox"] {
-  margin-right: 0.35rem;
-  accent-color: #22c55e;
+  margin-right: 0.45rem;
+  accent-color: #6366f1;
+  cursor: pointer;
+  width: 1.05rem;
+  height: 1.05rem;
+  vertical-align: middle;
+  touch-action: manipulation;
+}
+
+.note-markdown li:has(input[type="checkbox"]:checked) {
+  color: rgb(113 113 122);
+  text-decoration: line-through;
+  text-decoration-color: rgb(82 82 91 / 0.7);
 }
 
 .note-markdown img {
