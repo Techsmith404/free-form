@@ -49,6 +49,7 @@ export function getDb(): Promise<IDBDatabase> {
     };
 
     request.onerror = () => {
+      dbPromise = null;
       reject(request.error);
     };
   });

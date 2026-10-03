@@ -21,6 +21,12 @@ import {
   fetchSettings,
   updateSettings
 } from './api/index.js';
+import {
+  dbGetNotebooks,
+  dbGetItems,
+  dbGetTemplates,
+  dbGetSetting
+} from './services/offlineDb.js';
 import { Sidebar } from './components/layout/Sidebar.js';
 import { Navbar } from './components/layout/Navbar.js';
 import { TemplatesView } from './components/views/TemplatesView.js';
@@ -146,6 +152,45 @@ export const App: React.FC = () => {
     setConfirmModal((prev) => ({ ...prev, open: false, isLoading: false }));
   };
 
+  // Immediate 0ms local hydration from IndexedDB on initial mount
+  useEffect(() => {
+    let mounted = true;
+    async function hydrateLocalCache() {
+      try {
+        const [localNbs, localItms, localTpls, localTheme, localPriorities] = await Promise.all([
+          dbGetNotebooks(),
+          dbGetItems(),
+          dbGetTemplates(),
+          dbGetSetting('theme'),
+          dbGetSetting('priorities')
+        ]);
+        if (!mounted) return;
+        if (localNbs && localNbs.length > 0) setNotebooks(localNbs);
+        if (localItms && localItms.length > 0) {
+          const sorted = [...localItms].sort((a, b) => {
+            if (b.is_pinned !== a.is_pinned) return (b.is_pinned || 0) - (a.is_pinned || 0);
+            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+          });
+          setItems(sorted);
+        }
+        if (localTpls && localTpls.length > 0) setTemplates(localTpls);
+        if (localTheme || localPriorities) {
+          setSettings((prev) => ({
+            ...prev,
+            theme: (localTheme as ThemeMode) || prev.theme,
+            priorities: localPriorities ? (Array.isArray(localPriorities) ? localPriorities : prev.priorities) : prev.priorities
+          }));
+        }
+      } catch (err) {
+        console.warn('Initial local cache hydration error:', err);
+      }
+    }
+    hydrateLocalCache();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Initial Data Load
   const loadData = async () => {
     try {
@@ -239,6 +284,13 @@ export const App: React.FC = () => {
   // Filtered Items
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
+      // 0. Trash / Archive filter
+      if (activeFilter === 'trash') {
+        if (!item.is_archived) return false;
+      } else {
+        if (item.is_archived) return false;
+      }
+
       // 1. Notebook filter
       if (activeNotebookId && item.notebook_id !== activeNotebookId) {
         return false;
@@ -615,8 +667,13 @@ export const App: React.FC = () => {
                 </div>
               )}
 
-              {/* Empty State */}
-              {filteredItems.length === 0 ? (
+              {/* Loading / Empty State */}
+              {loading && items.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto my-12">
+                  <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mb-3" />
+                  <p className="text-xs text-zinc-400 font-medium">Loading your notes...</p>
+                </div>
+              ) : filteredItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto my-12 border-2 border-dashed border-zinc-800/80 rounded-3xl bg-zinc-900/30">
                   <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 mb-4 shadow-xl">
                     <Sparkles className="w-7 h-7 text-brand-400" />

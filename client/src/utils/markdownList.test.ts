@@ -3,7 +3,8 @@ import {
   analyzeNoteContent,
   toggleChecklistItemByLine,
   toggleChecklistItemByIndex,
-  renderInteractiveMarkdownHtml
+  renderInteractiveMarkdownHtml,
+  renderInlineMarkdownHtml
 } from './markdownList.js';
 
 describe('markdownList utility', () => {
@@ -118,5 +119,17 @@ Finally we aligned on our next steps.
     expect(html).toContain('data-checklist-index="1"');
     expect(html).toContain('checked');
     expect(html).not.toContain('disabled=""');
+  });
+
+  it('renders inline markdown formatting without stripping bold, italic, or code', () => {
+    const raw1 = '**Year:** 2011';
+    expect(renderInlineMarkdownHtml(raw1)).toBe('<strong>Year:</strong> 2011');
+
+    const raw2 = '*Main Info:* with `special-code`';
+    expect(renderInlineMarkdownHtml(raw2)).toBe('<em>Main Info:</em> with <code>special-code</code>');
+
+    // Ensures script tags or malicious HTML brackets are escaped
+    const raw3 = '**Safe:** <script>alert(1)</script>';
+    expect(renderInlineMarkdownHtml(raw3)).toBe('<strong>Safe:</strong> &lt;script&gt;alert(1)&lt;/script&gt;');
   });
 });

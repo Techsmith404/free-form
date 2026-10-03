@@ -161,13 +161,35 @@ function generateUUID(): string {
   });
 }
 
+/**
+ * Executes a fetch request with a strict abort timeout to prevent stalled TCP hangs
+ * when operating disconnected or on unroutable mobile networks.
+ */
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = 2500
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // =============================================================================
 // NOTEBOOKS API (Offline-First)
 // =============================================================================
 
 export async function fetchNotebooks(): Promise<Notebook[]> {
   try {
-    const res = await fetch(apiUrl('/notebooks'));
+    const res = await fetchWithTimeout(apiUrl('/notebooks'), {}, 2500);
     if (res.ok) {
       const serverNotebooks: Notebook[] = await res.json();
       await dbPutNotebooks(serverNotebooks);
@@ -261,7 +283,7 @@ export async function fetchItems(params?: ItemQueryParams): Promise<Item[]> {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.tag) searchParams.set('tag', params.tag);
 
-    const res = await fetch(`${apiUrl('/items')}?${searchParams.toString()}`);
+    const res = await fetchWithTimeout(`${apiUrl('/items')}?${searchParams.toString()}`, {}, 2500);
     if (res.ok) {
       const serverItems: Item[] = await res.json();
       await dbPutItems(serverItems);
@@ -273,11 +295,13 @@ export async function fetchItems(params?: ItemQueryParams): Promise<Item[]> {
   const all = await dbGetItems();
   const notebooks = await dbGetNotebooks();
   const hiddenNbMap = new Map<string, boolean>();
+  const nbMap = new Map<string, Notebook>();
   for (const nb of notebooks) {
     if (nb.hide_from_all) hiddenNbMap.set(nb.id, true);
+    nbMap.set(nb.id, nb);
   }
 
-  return all.filter((item) => {
+  const filtered = all.filter((item) => {
     if (params?.is_archived) {
       if (!item.is_archived) return false;
     } else {
@@ -310,11 +334,30 @@ export async function fetchItems(params?: ItemQueryParams): Promise<Item[]> {
 
     return true;
   });
+
+  // Attach notebook_name and notebook_color if missing from local item record
+  for (const item of filtered) {
+    if (item.notebook_id && !item.notebook_name) {
+      const nb = nbMap.get(item.notebook_id);
+      if (nb) {
+        item.notebook_name = nb.name;
+        item.notebook_color = nb.color;
+      }
+    }
+  }
+
+  // Sort pinned first, then updated_at DESC (matching server behavior)
+  filtered.sort((a, b) => {
+    if (b.is_pinned !== a.is_pinned) return (b.is_pinned || 0) - (a.is_pinned || 0);
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  });
+
+  return filtered;
 }
 
 export async function fetchItem(id: string): Promise<Item> {
   try {
-    const res = await fetch(`${apiUrl('/items')}/${id}`);
+    const res = await fetchWithTimeout(`${apiUrl('/items')}/${id}`, {}, 2500);
     if (res.ok) {
       const item: Item = await res.json();
       await dbPutItem(item);
@@ -462,7 +505,7 @@ export async function fetchCounterHistory(id: string): Promise<CounterHistoryEnt
 
 export async function fetchTemplates(): Promise<FormTemplate[]> {
   try {
-    const res = await fetch(apiUrl('/templates'));
+    const res = await fetchWithTimeout(apiUrl('/templates'), {}, 2500);
     if (res.ok) {
       const serverTemplates: FormTemplate[] = await res.json();
       await dbPutTemplates(serverTemplates);
@@ -544,7 +587,7 @@ export async function previewTemplateMarkdown(id: string, values: Record<string,
 
 export async function fetchTags(): Promise<Tag[]> {
   try {
-    const res = await fetch(apiUrl('/tags'));
+    const res = await fetchWithTimeout(apiUrl('/tags'), {}, 2500);
     if (res.ok) return res.json();
   } catch {}
   return [];
@@ -591,7 +634,7 @@ export function getExportUrl(): string {
 
 export async function fetchTimers(): Promise<Timer[]> {
   try {
-    const res = await fetch(apiUrl('/timers'));
+    const res = await fetchWithTimeout(apiUrl('/timers'), {}, 2500);
     if (res.ok) return res.json();
   } catch {}
   return [];
@@ -603,41 +646,41 @@ export async function createTimer(data: {
   notebook_id?: string | null;
   auto_start?: boolean;
 }): Promise<Timer> {
-  const res = await fetch(apiUrl('/timers'), {
+  const res = await fetchWithTimeout(apiUrl('/timers'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
-  });
+  }, 4000);
   if (!res.ok) throw new Error('Failed to create timer');
   return res.json();
 }
 
 export async function startTimer(id: string): Promise<Timer> {
-  const res = await fetch(`${apiUrl('/timers')}/${id}/start`, { method: 'POST' });
+  const res = await fetchWithTimeout(`${apiUrl('/timers')}/${id}/start`, { method: 'POST' }, 4000);
   if (!res.ok) throw new Error('Failed to start timer');
   return res.json();
 }
 
 export async function pauseTimer(id: string): Promise<Timer> {
-  const res = await fetch(`${apiUrl('/timers')}/${id}/pause`, { method: 'POST' });
+  const res = await fetchWithTimeout(`${apiUrl('/timers')}/${id}/pause`, { method: 'POST' }, 4000);
   if (!res.ok) throw new Error('Failed to pause timer');
   return res.json();
 }
 
 export async function resetTimer(id: string): Promise<Timer> {
-  const res = await fetch(`${apiUrl('/timers')}/${id}/reset`, { method: 'POST' });
+  const res = await fetchWithTimeout(`${apiUrl('/timers')}/${id}/reset`, { method: 'POST' }, 4000);
   if (!res.ok) throw new Error('Failed to reset timer');
   return res.json();
 }
 
 export async function dismissTimer(id: string): Promise<Timer> {
-  const res = await fetch(`${apiUrl('/timers')}/${id}/dismiss`, { method: 'POST' });
+  const res = await fetchWithTimeout(`${apiUrl('/timers')}/${id}/dismiss`, { method: 'POST' }, 4000);
   if (!res.ok) throw new Error('Failed to dismiss timer');
   return res.json();
 }
 
 export async function deleteTimer(id: string): Promise<void> {
-  const res = await fetch(`${apiUrl('/timers')}/${id}`, { method: 'DELETE' });
+  const res = await fetchWithTimeout(`${apiUrl('/timers')}/${id}`, { method: 'DELETE' }, 4000);
   if (!res.ok) throw new Error('Failed to delete timer');
 }
 
@@ -647,7 +690,7 @@ export async function deleteTimer(id: string): Promise<void> {
 
 export async function fetchReminders(): Promise<Reminder[]> {
   try {
-    const res = await fetch(apiUrl('/reminders'));
+    const res = await fetchWithTimeout(apiUrl('/reminders'), {}, 2500);
     if (res.ok) {
       const serverReminders: Reminder[] = await res.json();
       await dbPutReminders(serverReminders);
@@ -737,7 +780,7 @@ export async function deleteReminder(id: string): Promise<void> {
 
 export async function fetchSettings(): Promise<AppSettings> {
   try {
-    const res = await fetch(apiUrl('/settings'));
+    const res = await fetchWithTimeout(apiUrl('/settings'), {}, 2500);
     if (res.ok) {
       const serverSettings: AppSettings = await res.json();
       await dbPutSetting('theme', serverSettings.theme);
@@ -772,18 +815,18 @@ export async function updateSettings(data: Partial<AppSettings>): Promise<AppSet
 // =============================================================================
 
 export async function sync(payload: SyncRequestBody): Promise<SyncResponseBody> {
-  const res = await fetch(apiUrl('/sync'), {
+  const res = await fetchWithTimeout(apiUrl('/sync'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
-  });
+  }, 4000);
   if (!res.ok) throw new Error('Sync failed with server');
   return res.json();
 }
 
 export async function fetchConflicts(): Promise<ConflictRecord[]> {
   try {
-    const res = await fetch(apiUrl('/conflicts'));
+    const res = await fetchWithTimeout(apiUrl('/conflicts'), {}, 2500);
     if (res.ok) {
       const serverConflicts: ConflictRecord[] = await res.json();
       return serverConflicts;

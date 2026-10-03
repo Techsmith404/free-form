@@ -11,7 +11,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Link from '@tiptap/extension-link';
 import TurndownService from 'turndown';
-import { marked } from 'marked';
+import { Marked } from 'marked';
 import {
   Bold,
   Italic,
@@ -33,6 +33,39 @@ import {
 } from 'lucide-react';
 import { uploadFile } from '../../api/index.js';
 
+export function markdownToTipTapHtml(markdown: string): string {
+  if (!markdown) return '';
+  const markedInstance = new Marked({
+    gfm: true,
+    breaks: false,
+    renderer: {
+      list(token) {
+        const isTaskList = token.items && token.items.some((i: any) => i.task);
+        let body = '';
+        for (let j = 0; j < token.items.length; j++) {
+          body += this.listitem(token.items[j]);
+        }
+        if (isTaskList) {
+          return `<ul data-type="taskList">\n${body}</ul>\n`;
+        }
+        const type = token.ordered ? 'ol' : 'ul';
+        const startAttr = token.ordered && token.start !== 1 ? ` start="${token.start}"` : '';
+        return `<${type}${startAttr}>\n${body}</${type}>\n`;
+      },
+      listitem(item: any) {
+        if (item.task) {
+          const isChecked = Boolean(item.checked);
+          const body = this.parser.parse(item.tokens, Boolean(item.loose));
+          return `<li data-type="taskItem" data-checked="${isChecked}">${body}</li>\n`;
+        }
+        const body = this.parser.parse(item.tokens, Boolean(item.loose));
+        return `<li>${body}</li>\n`;
+      }
+    }
+  });
+  return markedInstance.parse(markdown) as string;
+}
+
 const turndownService = new TurndownService({
   headingStyle: 'atx',
   codeBlockStyle: 'fenced'
@@ -45,7 +78,11 @@ turndownService.addRule('taskListItems', {
   },
   replacement: (content, node) => {
     const isChecked = (node as HTMLElement).getAttribute('data-checked') === 'true';
-    return `- [${isChecked ? 'x' : ' '}] ${content.trim()}\n`;
+    const prefix = `- [${isChecked ? 'x' : ' '}] `;
+    let cleanContent = content.trim();
+    cleanContent = cleanContent.replace(/\n+$/, '');
+    cleanContent = cleanContent.replace(/\n/gm, '\n    ');
+    return prefix + cleanContent + (node.nextSibling ? '\n' : '');
   }
 });
 
@@ -93,7 +130,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
         openOnClick: false
       })
     ],
-    content: marked.parse(initialMarkdown || '') as string,
+    content: markdownToTipTapHtml(initialMarkdown || ''),
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       const markdown = turndownService.turndown(html);
@@ -106,7 +143,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
   useEffect(() => {
     if (editor && initialMarkdown !== rawMarkdown) {
       setRawMarkdown(initialMarkdown);
-      const parsedHtml = marked.parse(initialMarkdown || '') as string;
+      const parsedHtml = markdownToTipTapHtml(initialMarkdown || '');
       if (editor.getHTML() !== parsedHtml) {
         editor.commands.setContent(parsedHtml);
       }
@@ -127,7 +164,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
     if (mode === viewMode) return;
     if (mode === 'wysiwyg' && editor) {
       // Sync raw markdown to TipTap HTML
-      const html = marked.parse(rawMarkdown || '') as string;
+      const html = markdownToTipTapHtml(rawMarkdown || '');
       editor.commands.setContent(html);
     } else if (mode === 'markdown' && editor) {
       // Sync TipTap to raw markdown

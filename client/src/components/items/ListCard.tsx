@@ -17,6 +17,7 @@ import { hapticTap } from '../../services/native.js';
 import {
   analyzeNoteContent,
   toggleChecklistItemByLine,
+  renderInlineMarkdownHtml,
   ChecklistItemData,
   BulletItemData,
   HeadingItemData,
@@ -299,9 +300,10 @@ export const ListCard: React.FC<ListCardProps> = ({
 
         {/* Optional Preamble / Subtitle */}
         {preamble && (
-          <p className="text-xs sm:text-sm text-zinc-400 italic mb-2">
-            {preamble}
-          </p>
+          <div
+            className="note-markdown text-xs sm:text-sm text-zinc-400 italic mb-2 [&_strong]:text-zinc-200 [&_em]:text-zinc-300"
+            dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(preamble) }}
+          />
         )}
 
         {/* List Content Rows */}
@@ -332,14 +334,13 @@ export const ListCard: React.FC<ListCardProps> = ({
                     {line.checked && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
                   </button>
                   <span
-                    className={`text-sm leading-relaxed select-none transition-colors ${
+                    className={`note-markdown inline text-sm leading-relaxed select-none transition-colors ${
                       line.checked
-                        ? 'line-through text-zinc-500 decoration-zinc-600/70'
+                        ? 'line-through text-zinc-500 decoration-zinc-600/70 [&_strong]:text-zinc-500 [&_em]:text-zinc-500 [&_code]:text-zinc-500'
                         : 'text-zinc-200'
                     }`}
-                  >
-                    {line.text}
-                  </span>
+                    dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
+                  />
                 </div>
               );
             }
@@ -358,9 +359,10 @@ export const ListCard: React.FC<ListCardProps> = ({
                   ) : (
                     <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0 mt-2 shadow-[0_0_8px_rgba(56,189,248,0.5)]" />
                   )}
-                  <span className="text-sm leading-relaxed text-zinc-200">
-                    {line.text}
-                  </span>
+                  <span
+                    className="note-markdown inline text-sm leading-relaxed text-zinc-200"
+                    dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
+                  />
                 </div>
               );
             }
@@ -369,21 +371,19 @@ export const ListCard: React.FC<ListCardProps> = ({
               return (
                 <div
                   key={`head-${line.lineIndex}-${idx}`}
-                  className="pt-2 pb-0.5 text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/80"
-                >
-                  {line.text}
-                </div>
+                  className="note-markdown pt-2 pb-0.5 text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/80"
+                  dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
+                />
               );
             }
 
             // Paragraph / text
             return (
-              <p
+              <div
                 key={`text-${line.lineIndex}-${idx}`}
-                className="text-xs text-zinc-400 py-0.5 leading-relaxed"
-              >
-                {line.text}
-              </p>
+                className="note-markdown text-xs text-zinc-400 py-0.5 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
+              />
             );
           })}
 

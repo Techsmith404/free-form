@@ -1,4 +1,4 @@
-import { Marked } from 'marked';
+import { Marked, marked } from 'marked';
 
 export const CHECKLIST_ITEM_REGEX = /^(\s*)([-*+]|\d+\.)\s+\[([ xX])\]\s*(.*)$/;
 export const BULLET_ITEM_REGEX = /^(\s*)([-*+]|\d+\.)\s+(?!\[[ xX]\])(.*)$/;
@@ -270,4 +270,14 @@ export function renderInteractiveMarkdownHtml(content: string): string {
   });
 
   return markedInstance.parse(content) as string;
+}
+
+/**
+ * Renders inline markdown formatting (bold, italic, code, strikethrough)
+ * while escaping raw HTML brackets to prevent script injection.
+ */
+export function renderInlineMarkdownHtml(text: string): string {
+  if (!text || !text.trim()) return '';
+  const safeText = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return marked.parseInline(safeText) as string;
 }

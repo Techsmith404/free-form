@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.9.2  
-> **Last Updated:** October 2, 2026 — Interactive Checklists & Special List Cards: Direct 1-tap checkbox toggling on card previews, dedicated Checklist & List card styles with visual progress tracking, and enhanced list view badges  
+> **Document Version:** 1.9.3  
+> **Last Updated:** October 2, 2026 — Zero-Latency Offline Hydration, Fast-Fail Network Timeouts (2.5s), TipTap Checklist WYSIWYG Preservation, and List Card Inline Markdown Rendering  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -298,7 +298,8 @@ Free Form operates with an **airtight, offline-first local architecture** that a
 
 ### 1. Persistent Local Storage Engine (`offlineDb.ts`)
 * Uses browser/WebView native **IndexedDB** (`freeform_local_db`) with dedicated stores: `items`, `notebooks`, `templates`, `reminders`, `settings`, `conflicts`, `outbox`, and `meta`.
-* **Zero-Latency Boot:** On application launch, notes and forms load instantly from IndexedDB before attempting network requests.
+* **Zero-Latency Boot & Instant Local Hydration:** On initial application launch, [`App.tsx`](file:///home/codaine/Projects/free-form/client/src/App.tsx) immediately executes a synchronous-first hydration hook reading `dbGetNotebooks()`, `dbGetItems()`, `dbGetTemplates()`, and user settings from IndexedDB directly. Notes and forms render in `< 10ms` with zero network blocking.
+* **Fast-Fail Network Requests (`fetchWithTimeout`):** All network read requests utilize strict 2.5-second abort timeouts via `AbortController` (4s for mutations). When operating disconnected or over cellular connections where a local private LAN IP drops TCP packets, the app aborts immediately and falls back to local IndexedDB rather than stalling for the 120-second default OS TCP timeout.
 * **Persistent Outbox Mutation Queue:** Offline mutations (`create_item`, `update_item`, `delete_item`, `counter_adjust`, `create_notebook`, etc.) are serialized into the `outbox` store with client timestamps and base timestamps.
 
 ### 2. Bi-Directional Synchronization Protocol (`POST /api/sync`)
@@ -701,7 +702,19 @@ To integrate a third-party app into this surface:
 
 
 
-## 15. AI Agent Maintenance Protocol
+### 9. TipTap TaskList Extension Schema Attributes & Turndown Serialization
+TipTap's `TaskList` and `TaskItem` extensions require explicit DOM data attributes (`ul[data-type="taskList"]` and `li[data-type="taskItem"][data-checked="true|false"]`). Standard Markdown parsers (like `marked.parse()`) output vanilla `<ul><li><input type="checkbox"> item</li></ul>`. Because the schema does not match without `data-type`, TipTap falls back to `StarterKit`'s `BulletList` and `ListItem`, silently converting checkboxes into bullet points upon entering WYSIWYG mode. When re-saved, Turndown serializes the bullets as `* Item`, destroying the checklist.
+**Resolution:** Implement a custom Marked renderer in `markdownToTipTapHtml()` specifically emitting `data-type="taskList"` and `data-type="taskItem"`, and configure a custom Turndown rule `taskListItems` to serialize `- [ ] ` or `- [x] ` with strict indentation.
+
+### 10. Mobile Network TCP SYN Black-Holing & Fast-Fail Local Hydration
+When a mobile device running on cellular data (5G/LTE) opens the app with a local LAN server URL configured (e.g. `http://192.168.1.150:3000`), private IP packets are silently dropped by cellular carriers. Standard browser `fetch()` calls do not immediately reject; they hang waiting for the OS TCP SYN timeout (up to 120 seconds). If an app executes network fetches before rendering local state, the UI freezes on an empty state ("No items found") for minutes.
+**Resolution:**
+1. **Immediate Local Hydration:** Mount an instant `< 10ms` hydration hook reading directly from IndexedDB (`dbGetItems()`, `dbGetNotebooks()`, etc.) so cached notes render instantaneously.
+2. **Fast-Fail Timeouts (`fetchWithTimeout`):** Wrap all network fetch queries with `AbortController` enforcing strict 2.5-second timeouts (4s for mutations), fast-failing directly to local cache when the server is unreachable.
+
+---
+
+## 16. AI Agent Maintenance Protocol
 
 Whenever an AI coding agent works in this repository:
 1. **SSoT First:** Review `SSoT.md` at session start before proposing changes.

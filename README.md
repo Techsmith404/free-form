@@ -32,12 +32,13 @@ Most note apps force you into one of two extremes:
 * **Template-Bound Notebooks**: Bind a notebook to a default form template (e.g. "Car Maintenance" or "Daily Standup"). Tapping `+` inside that notebook immediately launches that form template.
 
 ### 2. 📝 Multi-Modal Note Types & Special List Cards
-* **Markdown Notes**: Rich text editing powered by TipTap (WYSIWYG) with bullet and numbered lists, code blocks, task checklists, quotes, and an instant toggle to raw Markdown source code.
+* **Markdown Notes & Checklist Preservation**: Rich text editing powered by TipTap (WYSIWYG) with bullet and numbered lists, code blocks, task checklists, quotes, and an instant toggle to raw Markdown source code. Task lists (`- [ ]`, `- [x]`) faithfully roundtrip between markdown and TipTap WYSIWYG mode without degrading into standard bullets.
 * **Interactive Checklist Card Previews**: Tap checkboxes directly on note card previews in your feed to tick items off in real time with instant optimistic UI, haptic feedback, and database persistence—without needing to open the note editor modal!
-* **Special Checklist & List Card Presentations (`ListCard.tsx`)**: Notes containing predominantly checklists or lists automatically transform into dedicated, tactile cards:
+* **Special Checklist & List Card Presentations (`ListCard.tsx`)**: Notes containing predominantly checklists or lists automatically transform into dedicated, tactile cards with full inline markdown rendering (`**bold**`, `*italic*`, `` `code` ``):
   * **Checklist Style**: Violet/Indigo badge (`[Checklist]`), live completion indicator (`3/5 done` or `✓ All completed`), responsive visual progress bar, custom tactile checkbox buttons with smooth animations, strikethrough styling for completed tasks, and hierarchical indent support.
   * **Nicer Looking List Style**: Sky/Cyan badge (`[List]`), item count badge, circular numbered pills (`1`, `2`, `3`) or glowing cyan bullets, refined row spacing, and clean overflow accordion.
 * **Rich Markdown Card Previews**: Standard prose notes render authentic GitHub-Flavored Markdown directly on the card with headings, disc bullets, bold keys, and code tags, complete with individual accordion expand/collapse toggles and interactive checkboxes.
+* **Zero-Latency Offline-First Architecture**: App boots instantaneously (<10ms) from local IndexedDB cache even when completely disconnected or on unroutable mobile networks, while fast-fail network timeouts (2.5s) prevent stalled connections.
 * **Interactive Counters**: One-tap tally counters with configurable step sizes, minimum/maximum limits, units, reset values, and a timestamped audit history log.
 * **Webpage Bookmarks**: Paste any URL to automatically crawl and embed rich OpenGraph previews, site names, favicons, and thumbnail images.
 * **Scrapbook Posters**: Photo collage cards for visual collections with image captioning and full-screen lightbox zoom.
