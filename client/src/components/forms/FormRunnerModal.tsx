@@ -117,7 +117,7 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
       const uploaded = await uploadFile(file);
       handleFieldChange(fieldId, uploaded.url);
     } catch (err) {
-      alert('Failed to upload file');
+      setError('Failed to upload file. Please try again.');
     }
   };
 

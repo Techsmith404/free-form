@@ -7,12 +7,7 @@ import {
   RotateCcw,
   Copy,
   Edit3,
-  X,
-  AlertTriangle,
-  ArrowRight,
-  Sparkles,
-  Layers,
-  FileText
+  X
 } from 'lucide-react';
 
 interface ConflictResolverModalProps {
@@ -78,35 +73,32 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
     }
   };
 
-  const activeLines = (currentConflict.active_content || '').split('\n');
-  const conflictLines = (currentConflict.conflict_content || '').split('\n');
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-[var(--surface-primary)] border border-amber-500/30 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+      <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-amber-500/5">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-amber-500/5">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
               <GitMerge className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                <h2 className="text-base font-semibold text-zinc-100">
                   Resolve Note Conflict
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
                   {currentIndex + 1} of {conflicts.length}
                 </span>
               </div>
-              <p className="text-xs text-[var(--text-secondary)]">
+              <p className="text-xs text-zinc-400">
                 Edited on multiple devices offline. The most recent edit is currently active.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
+            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -114,8 +106,8 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
 
         {/* Multiple Conflicts Selector Strip */}
         {conflicts.length > 1 && (
-          <div className="flex items-center gap-2 px-5 py-2 bg-[var(--surface-secondary)]/50 border-b border-[var(--border-subtle)] overflow-x-auto">
-            <span className="text-xs text-[var(--text-tertiary)] font-medium shrink-0">Conflicts:</span>
+          <div className="flex items-center gap-2 px-5 py-2 bg-zinc-950/50 border-b border-zinc-800 overflow-x-auto">
+            <span className="text-xs text-zinc-500 font-medium shrink-0">Conflicts:</span>
             {conflicts.map((c, idx) => (
               <button
                 key={c.id}
@@ -126,7 +118,7 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-all shrink-0 ${
                   idx === currentIndex
                     ? 'bg-amber-500 text-black shadow-sm font-semibold'
-                    : 'bg-[var(--surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'
+                    : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700/50'
                 }`}
               >
                 {c.active_title || `Note #${idx + 1}`}
@@ -144,25 +136,25 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
                 ✏️ <strong>Custom Merge Mode:</strong> Combine, edit, or clean up the text below. When ready, click "Save & Keep Merged Note" to replace the active note with this merged content.
               </div>
               <div>
-                <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
+                <label className="block text-xs font-medium text-zinc-400 mb-1">
                   Note Title
                 </label>
                 <input
                   type="text"
                   value={customTitle}
                   onChange={(e) => setCustomTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-amber-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
+                <label className="block text-xs font-medium text-zinc-400 mb-1">
                   Merged Markdown Content
                 </label>
                 <textarea
                   rows={14}
                   value={customContent}
                   onChange={(e) => setCustomContent(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-mono text-xs focus:outline-none focus:border-amber-500 leading-relaxed"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 font-mono text-xs focus:outline-none focus:border-amber-500 leading-relaxed"
                 />
               </div>
             </div>
@@ -189,10 +181,10 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
                     </span>
                   </div>
                   <div className="p-4 flex-1 flex flex-col space-y-2">
-                    <h3 className="font-semibold text-sm text-[var(--text-primary)]">
+                    <h3 className="font-semibold text-sm text-zinc-100">
                       {currentConflict.active_title}
                     </h3>
-                    <div className="flex-1 max-h-64 overflow-y-auto p-3 rounded-lg bg-[var(--surface-secondary)]/60 text-xs font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-words leading-relaxed border border-[var(--border-subtle)]">
+                    <div className="flex-1 max-h-64 overflow-y-auto p-3 rounded-lg bg-zinc-950/60 text-xs font-mono text-zinc-300 whitespace-pre-wrap break-words leading-relaxed border border-zinc-800/80">
                       {currentConflict.active_content || <em className="text-zinc-500">Empty content</em>}
                     </div>
                   </div>
@@ -217,10 +209,10 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
                     </span>
                   </div>
                   <div className="p-4 flex-1 flex flex-col space-y-2">
-                    <h3 className="font-semibold text-sm text-[var(--text-primary)]">
+                    <h3 className="font-semibold text-sm text-zinc-100">
                       {currentConflict.conflict_title}
                     </h3>
-                    <div className="flex-1 max-h-64 overflow-y-auto p-3 rounded-lg bg-[var(--surface-secondary)]/60 text-xs font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-words leading-relaxed border border-[var(--border-subtle)]">
+                    <div className="flex-1 max-h-64 overflow-y-auto p-3 rounded-lg bg-zinc-950/60 text-xs font-mono text-zinc-300 whitespace-pre-wrap break-words leading-relaxed border border-zinc-800/80">
                       {currentConflict.conflict_content || <em className="text-zinc-500">Empty content</em>}
                     </div>
                   </div>
@@ -231,13 +223,13 @@ export const ConflictResolverModal: React.FC<ConflictResolverModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--surface-primary)]">
+        <div className="p-4 border-t border-zinc-800 bg-zinc-900">
           {isCustomMerging ? (
             <div className="flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setIsCustomMerging(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
               >
                 Cancel Merge
               </button>

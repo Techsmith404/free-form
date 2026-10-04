@@ -392,8 +392,8 @@ export async function itemRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // Get counter history
-  fastify.get('/api/items/:id/counter/history', async (request, reply) => {
+  // Get counter history (supports both /counter/history and SSoT-standard /counter-history)
+  const getCounterHistoryHandler = async (request: any) => {
     const { id } = request.params as { id: string };
     const history = db.prepare(`
       SELECT * FROM counter_history
@@ -403,5 +403,8 @@ export async function itemRoutes(fastify: FastifyInstance) {
     `).all(id);
 
     return history;
-  });
+  };
+
+  fastify.get('/api/items/:id/counter/history', getCounterHistoryHandler);
+  fastify.get('/api/items/:id/counter-history', getCounterHistoryHandler);
 }

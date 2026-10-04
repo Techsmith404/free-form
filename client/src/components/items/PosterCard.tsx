@@ -21,6 +21,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
   const images = meta.images || [];
   const [activeZoomImage, setActiveZoomImage] = useState<PosterImage | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -28,6 +29,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
 
     try {
       setIsUploading(true);
+      setUploadError(null);
       const newImages: PosterImage[] = [...images];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -50,7 +52,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
       });
     } catch (err) {
       console.error('Failed to upload image', err);
-      alert('Failed to upload image');
+      setUploadError('Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -100,6 +102,9 @@ export const PosterCard: React.FC<PosterCardProps> = ({
           </h3>
           {item.content && (
             <p className="text-sm text-zinc-400 mt-1 line-clamp-2">{item.content}</p>
+          )}
+          {uploadError && (
+            <p className="text-xs text-red-400 mt-1">{uploadError}</p>
           )}
         </div>
 

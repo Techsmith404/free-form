@@ -36,6 +36,7 @@ export const NewPosterModal: React.FC<NewPosterModalProps> = ({
 
     try {
       setUploading(true);
+      setError(null);
       const newImgs: PosterImage[] = [...images];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -51,7 +52,7 @@ export const NewPosterModal: React.FC<NewPosterModalProps> = ({
       setImages(newImgs);
     } catch (err) {
       console.error(err);
-      alert('Failed to upload image(s)');
+      setError('Failed to upload image(s). Please try again.');
     } finally {
       setUploading(false);
       e.target.value = '';

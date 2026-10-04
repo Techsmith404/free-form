@@ -19,6 +19,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string>(value || '');
 
   useEffect(() => {
@@ -99,6 +100,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasDrawn(false);
     setSignatureUrl('');
+    setError(null);
     onChange('');
   };
 
@@ -108,13 +110,14 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
 
     try {
       setSaving(true);
+      setError(null);
       const dataUrl = canvas.toDataURL('image/png');
       const uploaded = await uploadBase64(dataUrl, 'signature.png');
       setSignatureUrl(uploaded.url);
       onChange(uploaded.url);
     } catch (err) {
       console.error('Failed to save signature', err);
-      alert('Failed to save signature');
+      setError('Failed to save signature. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -193,6 +196,9 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
           </>
         )}
       </div>
+      {error && (
+        <p className="text-xs text-red-400 mt-1">{error}</p>
+      )}
     </div>
   );
 };

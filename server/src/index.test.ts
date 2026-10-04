@@ -94,6 +94,28 @@ describe('Free Form Backend Core', () => {
     expect(history.length).toBeGreaterThan(0);
   });
 
+  it('should support both /counter/history and /counter-history endpoints', async () => {
+    const { itemRoutes } = await import('./routes/items.js');
+    const fastify = (await import('fastify')).default();
+    await fastify.register(itemRoutes);
+
+    const item = db.prepare("SELECT * FROM items WHERE type = 'counter'").get() as any;
+    expect(item).toBeDefined();
+
+    const res1 = await fastify.inject({
+      method: 'GET',
+      url: `/api/items/${item.id}/counter/history`
+    });
+    expect(res1.statusCode).toBe(200);
+
+    const res2 = await fastify.inject({
+      method: 'GET',
+      url: `/api/items/${item.id}/counter-history`
+    });
+    expect(res2.statusCode).toBe(200);
+    expect(JSON.parse(res1.body)).toEqual(JSON.parse(res2.body));
+  });
+
   it('should support hide_from_all on notebooks and items', () => {
     const hiddenNbId = `nb-hidden-${nanoid()}`;
     const now = new Date().toISOString();

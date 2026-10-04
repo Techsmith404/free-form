@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.9.3  
-> **Last Updated:** October 2, 2026 — Zero-Latency Offline Hydration, Fast-Fail Network Timeouts (2.5s), TipTap Checklist WYSIWYG Preservation, and List Card Inline Markdown Rendering  
+> **Document Version:** 1.9.4  
+> **Last Updated:** October 3, 2026 — Mobile-First Note Editor Overhaul, Dynamic Viewport Typing Space, Single-Row Horizontal Scrollable TipTap Toolbar & Collapsible Metadata Chips  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -493,6 +493,19 @@ To guarantee that mobile devices, desktop browsers, and PWAs never use stale HTM
 * **HTML Version Query Strings:** Public icon tags in `client/index.html` append cache-busting version tags (`href="/logo.svg?v=2"`, `href="/favicon.ico?v=2"`, `href="/apple-touch-icon.png?v=2"`).
 * **Workbox Precaching:** `vite-plugin-pwa` precaches all icons and bundles with cryptographic hash revisions, prompting instant background updates.
 
+### 10. Mobile-First Note Editor Overhaul (`NoteEditorModal.tsx` & `TipTapEditor.tsx`)
+* **Maximum Viewport Real Estate Above Virtual Keyboard:**
+  * **Full-Screen Immersive Canvas:** On mobile devices, `NoteEditorModal` replaces the constrained desktop modal box with an edge-to-edge full viewport layout (`fixed inset-0 z-50 bg-zinc-950 sm:bg-black/80 pt-[max(env(safe-area-inset-top),0px)] pb-[max(env(safe-area-inset-bottom),0px)]`). Outer modal margins and bottom sheet clippings are removed, enabling 100% of the screen above the virtual keyboard to be utilized.
+  * **Direct Header Save Action:** Incorporates a thumb-friendly green Save button (`bg-brand-500`) directly inside the top header (`sm:hidden flex items-center gap-1.5 h-9 px-3`) next to quick toggles (`ArrowLeft` Back/Cancel, `EyeOff` Hide, `Star` Favorite, `Pin`).
+  * **Elimination of Mobile Footer:** The desktop bottom footer is strictly hidden on mobile devices (`hidden sm:flex`), instantly freeing 56px of vertical height directly above the keyboard.
+  * **Collapsible Mobile Metadata Strip:** Rather than stacking 4 vertical form fields consuming ~228px on mobile, `NoteEditorModal` presents a single-line horizontal chip bar (`[📁 Notebook]`, `[⚡ Priority]`, `[🏷️ Tags]`, and a `Details ▾` toggle) that occupies only ~28px. Tapping any chip or the toggle expands the full dropdowns and tags input, keeping 156px of height reclaimed during active note composition.
+  * **Edge-to-Edge Canvas Padding:** TipTap editor outer wrapper reduces padding from `p-4 sm:p-6` to `p-0 sm:p-6 min-h-0`, reclaiming 32px of vertical and 32px of horizontal margins on mobile screens.
+* **Persistent Single-Row Horizontally Scrollable TipTap Toolbar:**
+  * **Strict `shrink-0` Enforcement:** The toolbar container (`shrink-0`), all 14 formatting buttons, dividers, and the View Mode switcher are marked `shrink-0`, permanently preventing flexbox compression from crushing the toolbar to 0px height or pushing it off-screen when virtual keyboards open.
+  * **Touch-Friendly Horizontal Scrolling:** Formats all actions into a single-row smooth scrollable strip (`flex items-center justify-between gap-1 px-2 py-1.5 shrink-0 overflow-x-auto no-scrollbar`), eliminating 2–3 line button wrapping (saving ~42px).
+  * **Dynamic Dynamic Flex Sizing:** Removed rigid `min-h-[360px]`, `min-h-[320px]`, and `min-height: 280px` rules in favor of `min-h-0 flex-1 overflow-y-auto` and `min-h-full h-full` on `EditorContent`, `textarea`, and `.ProseMirror` in `index.css`.
+  * **Space Expansion:** Visible text editing space increased from under 40px to ~222px+ (over 500% increase) on mobile devices with active virtual keyboards.
+
 ---
 
 ## 11. REST API Catalog & Endpoint Specifications
@@ -526,7 +539,7 @@ All endpoints are hosted under `/api/*` on Fastify:
 
 ### Counter Actions (`/api/items/:id/counter`)
 * `POST /api/items/:id/counter`: Adjusts counter (`delta`, `reset`, `setValue`, `note`). Automatically records to `counter_history`.
-* `GET /api/items/:id/counter-history`: Retrieves chronological audit trail for a counter.
+* `GET /api/items/:id/counter/history` (alias: `GET /api/items/:id/counter-history`): Retrieves chronological audit trail for a counter.
 
 ### Templates (`/api/templates`)
 * `GET /api/templates`: Lists all form templates with usage counts.
@@ -711,6 +724,10 @@ When a mobile device running on cellular data (5G/LTE) opens the app with a loca
 **Resolution:**
 1. **Immediate Local Hydration:** Mount an instant `< 10ms` hydration hook reading directly from IndexedDB (`dbGetItems()`, `dbGetNotebooks()`, etc.) so cached notes render instantaneously.
 2. **Fast-Fail Timeouts (`fetchWithTimeout`):** Wrap all network fetch queries with `AbortController` enforcing strict 2.5-second timeouts (4s for mutations), fast-failing directly to local cache when the server is unreachable.
+
+### 11. CSS Variable Scoping & Native Alert UX Integrity
+1. **Tailwind Palette Consistency vs. CSS Variables**: Dynamic UI components must avoid undeclared CSS custom properties (such as `var(--surface-primary)` or `var(--border-subtle)`) that do not exist in the root stylesheet, which causes transparent surfaces and unreadable contrast in modals like `ConflictResolverModal`. Always reference the established Tailwind color tokens (`bg-zinc-900`, `bg-zinc-950`, `text-zinc-100`, `text-zinc-400`, `border-zinc-800`).
+2. **Eradication of Browser `alert()` in Mobile PWAs**: Native Android WebViews and standalone PWA displays handle raw browser `alert()` calls synchronously, which can freeze interaction threads, disrupt full-screen gestures, or fail silently in background/locked states. All user feedback must use inline reactive error states (`setError`, `uploadError`) or non-blocking custom banners.
 
 ---
 

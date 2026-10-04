@@ -102,6 +102,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
   const [viewMode, setViewMode] = useState<'wysiwyg' | 'markdown'>('wysiwyg');
   const [rawMarkdown, setRawMarkdown] = useState<string>(initialMarkdown || '');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const editor = useEditor({
     editable,
@@ -187,11 +188,12 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
 
     try {
       setIsUploading(true);
+      setUploadError(null);
       const uploaded = await uploadFile(file);
       editor.chain().focus().setImage({ src: uploaded.url, alt: uploaded.name }).run();
     } catch (err) {
       console.error('Failed to upload image', err);
-      alert('Failed to upload image');
+      setUploadError('Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -199,16 +201,16 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full border border-zinc-800 rounded-xl bg-zinc-900/60 overflow-hidden shadow-xl">
+    <div className="flex flex-col h-full sm:border border-zinc-800 sm:rounded-xl bg-zinc-900/30 sm:bg-zinc-900/60 overflow-hidden sm:shadow-xl min-h-0">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-zinc-900 border-b border-zinc-800 text-zinc-300 select-none">
-        <div className="flex flex-wrap items-center gap-0.5">
+      <div className="flex items-center justify-between gap-1 px-2 py-1.5 bg-zinc-900 border-b border-zinc-800 text-zinc-300 select-none shrink-0 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-0.5 shrink-0">
           {viewMode === 'wysiwyg' && editor && (
             <>
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleBold().run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('bold') ? 'bg-zinc-800 text-brand-400 font-bold' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('bold') ? 'bg-zinc-800 text-brand-400 font-bold' : ''}`}
                 title="Bold (Ctrl+B)"
               >
                 <Bold className="w-4 h-4" />
@@ -216,18 +218,18 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleItalic().run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('italic') ? 'bg-zinc-800 text-brand-400 italic' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('italic') ? 'bg-zinc-800 text-brand-400 italic' : ''}`}
                 title="Italic (Ctrl+I)"
               >
                 <Italic className="w-4 h-4" />
               </button>
 
-              <div className="w-[1px] h-4 bg-zinc-700 mx-1" />
+              <div className="w-[1px] h-4 bg-zinc-700 mx-1 shrink-0" />
 
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('heading', { level: 1 }) ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('heading', { level: 1 }) ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Heading 1"
               >
                 <Heading1 className="w-4 h-4" />
@@ -235,7 +237,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('heading', { level: 2 }) ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('heading', { level: 2 }) ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Heading 2"
               >
                 <Heading2 className="w-4 h-4" />
@@ -243,18 +245,18 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('heading', { level: 3 }) ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('heading', { level: 3 }) ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Heading 3"
               >
                 <Heading3 className="w-4 h-4" />
               </button>
 
-              <div className="w-[1px] h-4 bg-zinc-700 mx-1" />
+              <div className="w-[1px] h-4 bg-zinc-700 mx-1 shrink-0" />
 
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleBulletList().run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('bulletList') ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('bulletList') ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Bullet List"
               >
                 <List className="w-4 h-4" />
@@ -262,7 +264,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('orderedList') ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('orderedList') ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Numbered List"
               >
                 <ListOrdered className="w-4 h-4" />
@@ -270,18 +272,18 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleTaskList().run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('taskList') ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('taskList') ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Task Checklist"
               >
                 <CheckSquare className="w-4 h-4" />
               </button>
 
-              <div className="w-[1px] h-4 bg-zinc-700 mx-1" />
+              <div className="w-[1px] h-4 bg-zinc-700 mx-1 shrink-0" />
 
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('codeBlock') ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('codeBlock') ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Code Block"
               >
                 <Code className="w-4 h-4" />
@@ -289,7 +291,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
               <button
                 type="button"
                 onClick={() => editor.chain().focus().toggleBlockquote().run()}
-                className={`p-1.5 rounded hover:bg-zinc-800 transition ${editor.isActive('blockquote') ? 'bg-zinc-800 text-brand-400' : ''}`}
+                className={`p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0 ${editor.isActive('blockquote') ? 'bg-zinc-800 text-brand-400' : ''}`}
                 title="Quote"
               >
                 <Quote className="w-4 h-4" />
@@ -297,13 +299,13 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
               <button
                 type="button"
                 onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-                className="p-1.5 rounded hover:bg-zinc-800 transition"
+                className="p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition touch-manipulation shrink-0"
                 title="Insert Table"
               >
                 <TableIcon className="w-4 h-4" />
               </button>
 
-              <label className="p-1.5 rounded hover:bg-zinc-800 transition cursor-pointer" title="Upload Image">
+              <label className="p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 transition cursor-pointer touch-manipulation shrink-0" title="Upload Image">
                 <Upload className="w-4 h-4" />
                 <input
                   type="file"
@@ -314,13 +316,13 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
                 />
               </label>
 
-              <div className="w-[1px] h-4 bg-zinc-700 mx-1" />
+              <div className="w-[1px] h-4 bg-zinc-700 mx-1 shrink-0" />
 
               <button
                 type="button"
                 onClick={() => editor.chain().focus().undo().run()}
                 disabled={!editor.can().undo()}
-                className="p-1.5 rounded hover:bg-zinc-800 disabled:opacity-30 transition"
+                className="p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 disabled:opacity-30 transition touch-manipulation shrink-0"
                 title="Undo"
               >
                 <Undo className="w-4 h-4" />
@@ -329,7 +331,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
                 type="button"
                 onClick={() => editor.chain().focus().redo().run()}
                 disabled={!editor.can().redo()}
-                className="p-1.5 rounded hover:bg-zinc-800 disabled:opacity-30 transition"
+                className="p-1.5 rounded-lg hover:bg-zinc-800 active:bg-zinc-700 disabled:opacity-30 transition touch-manipulation shrink-0"
                 title="Redo"
               >
                 <Redo className="w-4 h-4" />
@@ -338,7 +340,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
           )}
 
           {viewMode === 'markdown' && (
-            <div className="text-xs text-zinc-400 px-2 py-1 flex items-center gap-1.5">
+            <div className="text-xs text-zinc-400 px-2 py-1 flex items-center gap-1.5 shrink-0">
               <CodeXml className="w-4 h-4 text-brand-400" />
               <span>Editing Raw Markdown</span>
             </div>
@@ -346,47 +348,60 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-xs">
+        <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-xs shrink-0 ml-auto">
           <button
             type="button"
             onClick={() => handleToggleMode('wysiwyg')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition touch-manipulation ${
               viewMode === 'wysiwyg'
                 ? 'bg-brand-500/20 text-brand-400 font-medium'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            <span>WYSIWYG</span>
+            <span className="hidden sm:inline">WYSIWYG</span>
           </button>
           <button
             type="button"
             onClick={() => handleToggleMode('markdown')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition touch-manipulation ${
               viewMode === 'markdown'
                 ? 'bg-brand-500/20 text-brand-400 font-medium'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <CodeXml className="w-3.5 h-3.5" />
-            <span>Markdown</span>
+            <span className="hidden sm:inline">Markdown</span>
           </button>
         </div>
       </div>
 
+      {uploadError && (
+        <div className="flex items-center justify-between px-3 py-1.5 bg-red-500/10 border-b border-red-500/20 text-xs text-red-400 shrink-0">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            className="text-red-400 hover:text-red-300 ml-2 font-bold px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Editor Content Area */}
-      <div className="flex-1 overflow-y-auto p-4 focus:outline-none min-h-[360px]">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-5 focus:outline-none min-h-0">
         {viewMode === 'wysiwyg' ? (
           <EditorContent
             editor={editor}
-            className="prose prose-invert max-w-none focus:outline-none min-h-[320px] [&_.is-editor-empty:first-child::before]:text-zinc-500 [&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.is-editor-empty:first-child::before]:float-left [&_.is-editor-empty:first-child::before]:pointer-events-none [&_.is-editor-empty:first-child::before]:h-0"
+            className="prose prose-invert max-w-none focus:outline-none min-h-full h-full [&_.is-editor-empty:first-child::before]:text-zinc-500 [&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.is-editor-empty:first-child::before]:float-left [&_.is-editor-empty:first-child::before]:pointer-events-none [&_.is-editor-empty:first-child::before]:h-0"
           />
         ) : (
           <textarea
             value={rawMarkdown}
             onChange={handleRawMarkdownChange}
             placeholder={placeholder}
-            className="w-full h-full min-h-[340px] bg-transparent text-zinc-100 font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder:text-zinc-600"
+            className="w-full h-full min-h-full bg-transparent text-zinc-100 font-mono text-sm sm:text-base leading-relaxed resize-none focus:outline-none placeholder:text-zinc-600"
             spellCheck={false}
           />
         )}

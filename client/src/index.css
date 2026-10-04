@@ -96,10 +96,19 @@ html.dark {
   background: rgb(var(--color-zinc-500));
 }
 
+/* No scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* TipTap Editor Styles */
 .ProseMirror {
   outline: none;
-  min-height: 280px;
+  min-height: 100%;
 }
 
 .ProseMirror p {
