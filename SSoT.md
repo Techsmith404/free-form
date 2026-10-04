@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.9.4  
-> **Last Updated:** October 3, 2026 — Mobile-First Note Editor Overhaul, Dynamic Viewport Typing Space, Single-Row Horizontal Scrollable TipTap Toolbar & Collapsible Metadata Chips  
+> **Document Version:** 1.9.5  
+> **Last Updated:** October 4, 2026 — Foldable (Unfolded) & Tablet Note Editor Overhaul, Breakpoint Shift to `lg:`, Universal Header Save Action, and Elimination of Bulky Fixed Bars on Touch Screens  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -493,18 +493,18 @@ To guarantee that mobile devices, desktop browsers, and PWAs never use stale HTM
 * **HTML Version Query Strings:** Public icon tags in `client/index.html` append cache-busting version tags (`href="/logo.svg?v=2"`, `href="/favicon.ico?v=2"`, `href="/apple-touch-icon.png?v=2"`).
 * **Workbox Precaching:** `vite-plugin-pwa` precaches all icons and bundles with cryptographic hash revisions, prompting instant background updates.
 
-### 10. Mobile-First Note Editor Overhaul (`NoteEditorModal.tsx` & `TipTapEditor.tsx`)
+### 10. Mobile & Foldable Note Editor Overhaul (`NoteEditorModal.tsx` & `TipTapEditor.tsx`)
 * **Maximum Viewport Real Estate Above Virtual Keyboard:**
-  * **Full-Screen Immersive Canvas:** On mobile devices, `NoteEditorModal` replaces the constrained desktop modal box with an edge-to-edge full viewport layout (`fixed inset-0 z-50 bg-zinc-950 sm:bg-black/80 pt-[max(env(safe-area-inset-top),0px)] pb-[max(env(safe-area-inset-bottom),0px)]`). Outer modal margins and bottom sheet clippings are removed, enabling 100% of the screen above the virtual keyboard to be utilized.
-  * **Direct Header Save Action:** Incorporates a thumb-friendly green Save button (`bg-brand-500`) directly inside the top header (`sm:hidden flex items-center gap-1.5 h-9 px-3`) next to quick toggles (`ArrowLeft` Back/Cancel, `EyeOff` Hide, `Star` Favorite, `Pin`).
-  * **Elimination of Mobile Footer:** The desktop bottom footer is strictly hidden on mobile devices (`hidden sm:flex`), instantly freeing 56px of vertical height directly above the keyboard.
-  * **Collapsible Mobile Metadata Strip:** Rather than stacking 4 vertical form fields consuming ~228px on mobile, `NoteEditorModal` presents a single-line horizontal chip bar (`[📁 Notebook]`, `[⚡ Priority]`, `[🏷️ Tags]`, and a `Details ▾` toggle) that occupies only ~28px. Tapping any chip or the toggle expands the full dropdowns and tags input, keeping 156px of height reclaimed during active note composition.
-  * **Edge-to-Edge Canvas Padding:** TipTap editor outer wrapper reduces padding from `p-4 sm:p-6` to `p-0 sm:p-6 min-h-0`, reclaiming 32px of vertical and 32px of horizontal margins on mobile screens.
+  * **Full-Screen Immersive Canvas (`lg:` Breakpoint Shift):** Desktop modal styling (`rounded-2xl`, borders, `p-6` margins) was previously tied to `sm:` (640px). On foldable phones like Samsung Galaxy Z Fold unfolded (~700px–820px wide), the app treated the inner screen as a desktop computer, applying 48px outer margins and forcing 3-column form inputs open. The desktop modal breakpoint is now strictly shifted to `lg:` (1024px). Mobile phones, unfolded foldables, and tablets render in 100% full-screen edge-to-edge mode (`fixed inset-0 z-50 bg-zinc-950 lg:bg-black/80 pt-[max(env(safe-area-inset-top),0px)] pb-[max(env(safe-area-inset-bottom),0px)]`), reclaiming 48px of outer margins.
+  * **Universal Header Save Action:** The primary green Save button (`bg-brand-500`) is located directly inside the top header across all screen sizes, next to Close (`<` / `X`), Hide (`EyeOff`), Favorite (`Star`), and Pin.
+  * **Total Elimination of Bottom Footer:** The 56px bottom modal footer has been completely removed across all screen sizes, eliminating keyboard collisions and freeing 56px directly above the on-screen keyboard.
+  * **Borderless Title & Collapsible Properties Chips:** Replaced the bulky `h-12` bordered title input and the forced 3-column form fields (`sm:grid`) with a clean borderless inline title (`text-base sm:text-xl font-bold bg-transparent border-0`) and a compact 26px single-row pill strip (`[📁 Notebook ▾]`, `[⚡ Priority ▾]`, `[🏷️ Tags ▾]`, and a `Properties ▾` toggle). Form inputs are collapsed by default across all devices (`showDetails = false`) and only expand when explicitly tapped, reclaiming ~68px of height.
+  * **Edge-to-Edge Canvas Padding:** TipTap editor outer wrapper uses `p-0 lg:p-4 min-h-0`, reclaiming 48px of horizontal/vertical padding on foldables and phones.
 * **Persistent Single-Row Horizontally Scrollable TipTap Toolbar:**
   * **Strict `shrink-0` Enforcement:** The toolbar container (`shrink-0`), all 14 formatting buttons, dividers, and the View Mode switcher are marked `shrink-0`, permanently preventing flexbox compression from crushing the toolbar to 0px height or pushing it off-screen when virtual keyboards open.
   * **Touch-Friendly Horizontal Scrolling:** Formats all actions into a single-row smooth scrollable strip (`flex items-center justify-between gap-1 px-2 py-1.5 shrink-0 overflow-x-auto no-scrollbar`), eliminating 2–3 line button wrapping (saving ~42px).
   * **Dynamic Dynamic Flex Sizing:** Removed rigid `min-h-[360px]`, `min-h-[320px]`, and `min-height: 280px` rules in favor of `min-h-0 flex-1 overflow-y-auto` and `min-h-full h-full` on `EditorContent`, `textarea`, and `.ProseMirror` in `index.css`.
-  * **Space Expansion:** Visible text editing space increased from under 40px to ~222px+ (over 500% increase) on mobile devices with active virtual keyboards.
+  * **Foldable Space Expansion:** On an unfolded Galaxy Fold with virtual keyboard active, visible text editing space expanded from under 90px (3 short lines) to ~290px+ (15+ visible lines).
 
 ---
 

@@ -201,7 +201,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full sm:border border-zinc-800 sm:rounded-xl bg-zinc-900/30 sm:bg-zinc-900/60 overflow-hidden sm:shadow-xl min-h-0">
+    <div className="flex flex-col h-full lg:border border-zinc-800 lg:rounded-xl bg-zinc-900/30 lg:bg-zinc-900/60 overflow-hidden lg:shadow-xl min-h-0">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-1 px-2 py-1.5 bg-zinc-900 border-b border-zinc-800 text-zinc-300 select-none shrink-0 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-0.5 shrink-0">
