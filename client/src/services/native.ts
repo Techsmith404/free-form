@@ -1,10 +1,37 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
 export const isNative = Capacitor.isNativePlatform();
+
+/**
+ * Register a listener for Android system back button / swipe back gesture.
+ * The handler returns boolean:
+ * - true if the back action was consumed/handled (e.g., closed an open modal or drawer)
+ * - false if the back action is unhandled (which triggers clean app exit)
+ */
+export function registerBackButtonHandler(handler: () => boolean): () => void {
+  if (!isNative) return () => {};
+
+  try {
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      const handled = handler();
+      if (!handled) {
+        CapacitorApp.exitApp();
+      }
+    });
+
+    return () => {
+      listenerPromise.then((h) => h?.remove?.()).catch(() => {});
+    };
+  } catch (err) {
+    console.warn('Failed to register native backButton listener', err);
+    return () => {};
+  }
+}
 
 export interface NativeTimerPluginInterface {
   startCountdownNotification(options: { timerId: string; title: string; targetEndTime: number }): Promise<{ success: boolean; notificationId: number }>;

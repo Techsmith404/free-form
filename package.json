@@ -1,6 +1,6 @@
 {
   "name": "free-form",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A self-hostable, multi-modal markdown note & form engine web app and PWA",
   "license": "MIT",
@@ -24,6 +24,7 @@
     "concurrently": "^9.1.2"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/local-notifications": "^8.3.1",

@@ -394,14 +394,14 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
         {viewMode === 'wysiwyg' ? (
           <EditorContent
             editor={editor}
-            className="prose prose-invert max-w-none focus:outline-none min-h-full h-full [&_.is-editor-empty:first-child::before]:text-zinc-500 [&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.is-editor-empty:first-child::before]:float-left [&_.is-editor-empty:first-child::before]:pointer-events-none [&_.is-editor-empty:first-child::before]:h-0"
+            className="prose dark:prose-invert max-w-none focus:outline-none min-h-full h-full [&_.is-editor-empty:first-child::before]:text-zinc-500 [&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.is-editor-empty:first-child::before]:float-left [&_.is-editor-empty:first-child::before]:pointer-events-none [&_.is-editor-empty:first-child::before]:h-0"
           />
         ) : (
           <textarea
             value={rawMarkdown}
             onChange={handleRawMarkdownChange}
             placeholder={placeholder}
-            className="w-full h-full min-h-full bg-transparent text-zinc-100 font-mono text-sm sm:text-base leading-relaxed resize-none focus:outline-none placeholder:text-zinc-600"
+            className="w-full h-full min-h-full bg-transparent text-zinc-100 font-mono text-sm sm:text-base leading-relaxed resize-none focus:outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
             spellCheck={false}
           />
         )}

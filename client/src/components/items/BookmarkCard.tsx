@@ -43,7 +43,7 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
         <div>
           {/* Site Badge */}
           <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
-            <div className="flex items-center gap-2 truncate">
+            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
               {meta.favicon ? (
                 <img src={meta.favicon} alt="" className="w-4 h-4 rounded-sm shrink-0" />
               ) : (

@@ -91,8 +91,8 @@ export const CounterCard: React.FC<CounterCardProps> = ({
       {/* Header */}
       <div>
         <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 truncate">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded-lg">
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded-lg shrink-0">
               <Hash className="w-3.5 h-3.5" />
               <span>Counter</span>
             </span>

@@ -89,8 +89,8 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
       <div>
         {/* Card Header Bar */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2 truncate">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase rounded-lg border ${
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase rounded-lg border shrink-0 ${
               isProcessed
                 ? 'bg-zinc-800 text-zinc-400 border-zinc-700/60'
                 : 'bg-brand-500/15 text-brand-400 border-brand-500/30'

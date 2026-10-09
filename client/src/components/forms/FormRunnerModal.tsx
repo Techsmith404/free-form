@@ -483,7 +483,7 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
               })}
             </div>
           ) : (
-            <div className="prose prose-invert max-w-none text-sm p-4 bg-zinc-950 rounded-xl border border-zinc-800">
+            <div className="prose dark:prose-invert max-w-none text-sm p-4 bg-zinc-950 rounded-xl border border-zinc-800">
               <div
                 dangerouslySetInnerHTML={{
                   __html: marked.parse(markdownPreview || '*Generating preview...*') as string

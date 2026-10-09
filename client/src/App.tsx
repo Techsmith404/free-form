@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Notebook,
   Item,
@@ -52,7 +52,7 @@ import { ConfirmModal } from './components/modals/ConfirmModal.js';
 import { SettingsModal } from './components/modals/SettingsModal.js';
 import { ConflictResolverModal } from './components/modals/ConflictResolverModal.js';
 import { useRealtime } from './context/RealtimeContext.js';
-import { hapticTap, hapticMedium, hapticSuccess } from './services/native.js';
+import { hapticTap, hapticMedium, hapticSuccess, registerBackButtonHandler, isNative } from './services/native.js';
 
 import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers, Clock } from 'lucide-react';
 
@@ -151,6 +151,174 @@ export const App: React.FC = () => {
   const closeConfirmModal = () => {
     setConfirmModal((prev) => ({ ...prev, open: false, isLoading: false }));
   };
+
+  // Back Navigation Handler: backs out of modals, drawers, search, or filters
+  const handleBackAction = useCallback((): boolean => {
+    // 1. Confirm dialog
+    if (confirmModal.open) {
+      closeConfirmModal();
+      return true;
+    }
+    // 2. Note editor modal (backs out of note to list)
+    if (noteModal.open) {
+      setNoteModal({ open: false, item: null });
+      return true;
+    }
+    // 3. Markdown viewer modal
+    if (markdownViewerModal.open) {
+      setMarkdownViewerModal({ open: false, item: null });
+      return true;
+    }
+    // 4. Form runner modal
+    if (formRunnerModal.open) {
+      setFormRunnerModal({ open: false, template: null, existingItem: null });
+      return true;
+    }
+    // 5. Template builder modal
+    if (templateBuilderModal.open) {
+      setTemplateBuilderModal({ open: false, template: null });
+      return true;
+    }
+    // 6. Other item modals
+    if (bookmarkModal.open) {
+      setBookmarkModal({ open: false, item: null });
+      return true;
+    }
+    if (counterModal.open) {
+      setCounterModal({ open: false, item: null });
+      return true;
+    }
+    if (posterModal.open) {
+      setPosterModal({ open: false, item: null });
+      return true;
+    }
+    if (notebookModal.open) {
+      setNotebookModal({ open: false, notebook: null, defaultParentId: null });
+      return true;
+    }
+    if (timersModalOpen) {
+      setTimersModalOpen(false);
+      return true;
+    }
+    if (settingsModalOpen) {
+      setSettingsModalOpen(false);
+      return true;
+    }
+    if (conflictModalOpen) {
+      setConflictModalOpen(false);
+      return true;
+    }
+    // 7. Mobile drawers & FAB menu
+    if (mobileFabMenuOpen) {
+      setMobileFabMenuOpen(false);
+      return true;
+    }
+    if (mobileSidebarOpen) {
+      setMobileSidebarOpen(false);
+      return true;
+    }
+    // 8. Active search query
+    if (searchQuery.trim()) {
+      setSearchQuery('');
+      return true;
+    }
+    // 9. Active notebook or filter
+    if (activeNotebookId !== null) {
+      setActiveNotebookId(null);
+      return true;
+    }
+    if (activeFilter !== 'all') {
+      setActiveFilter('all');
+      return true;
+    }
+    if (selectedType !== 'all') {
+      setSelectedType('all');
+      return true;
+    }
+
+    return false; // Nothing to back out of (at root)
+  }, [
+    confirmModal.open,
+    noteModal.open,
+    markdownViewerModal.open,
+    formRunnerModal.open,
+    templateBuilderModal.open,
+    bookmarkModal.open,
+    counterModal.open,
+    posterModal.open,
+    notebookModal.open,
+    timersModalOpen,
+    settingsModalOpen,
+    conflictModalOpen,
+    mobileFabMenuOpen,
+    mobileSidebarOpen,
+    searchQuery,
+    activeNotebookId,
+    activeFilter,
+    selectedType
+  ]);
+
+  const backActionRef = useRef<() => boolean>(handleBackAction);
+  useEffect(() => {
+    backActionRef.current = handleBackAction;
+  }, [handleBackAction]);
+
+  // Native Android Back Button / Swipe Back listener
+  useEffect(() => {
+    const unregister = registerBackButtonHandler(() => {
+      return backActionRef.current();
+    });
+    return unregister;
+  }, []);
+
+  // Web Browser / PWA popstate history listener
+  useEffect(() => {
+    if (isNative) return;
+
+    const isAnyModalOpen =
+      confirmModal.open ||
+      noteModal.open ||
+      markdownViewerModal.open ||
+      formRunnerModal.open ||
+      templateBuilderModal.open ||
+      bookmarkModal.open ||
+      counterModal.open ||
+      posterModal.open ||
+      notebookModal.open ||
+      timersModalOpen ||
+      settingsModalOpen ||
+      conflictModalOpen ||
+      mobileFabMenuOpen ||
+      mobileSidebarOpen;
+
+    if (isAnyModalOpen) {
+      window.history.pushState({ modalOpen: true }, '');
+
+      const handlePopState = () => {
+        backActionRef.current();
+      };
+
+      window.addEventListener('popstate', handlePopState, { once: true });
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+      };
+    }
+  }, [
+    confirmModal.open,
+    noteModal.open,
+    markdownViewerModal.open,
+    formRunnerModal.open,
+    templateBuilderModal.open,
+    bookmarkModal.open,
+    counterModal.open,
+    posterModal.open,
+    notebookModal.open,
+    timersModalOpen,
+    settingsModalOpen,
+    conflictModalOpen,
+    mobileFabMenuOpen,
+    mobileSidebarOpen
+  ]);
 
   // Immediate 0ms local hydration from IndexedDB on initial mount
   useEffect(() => {

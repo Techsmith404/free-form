@@ -131,5 +131,78 @@ Finally we aligned on our next steps.
     // Ensures script tags or malicious HTML brackets are escaped
     const raw3 = '**Safe:** <script>alert(1)</script>';
     expect(renderInlineMarkdownHtml(raw3)).toBe('<strong>Safe:</strong> &lt;script&gt;alert(1)&lt;/script&gt;');
+
+    // Ensures arrows in inline code are not double-escaped to -&gt; or &amp;gt;
+    const raw4 = '`Freight -> In Transit -> List`';
+    expect(renderInlineMarkdownHtml(raw4)).toBe('<code>Freight -&gt; In Transit -&gt; List</code>');
+    expect(renderInlineMarkdownHtml(raw4)).not.toContain('&amp;gt;');
+
+    const raw5 = 'setup -> account -> known vehicle:';
+    expect(renderInlineMarkdownHtml(raw5)).toBe('setup -&gt; account -&gt; known vehicle:');
+    expect(renderInlineMarkdownHtml(raw5)).not.toContain('&amp;gt;');
+  });
+
+  it('does not classify notes with fenced code blocks as majority list', () => {
+    const text = `\`\`\`
+Empty Barrel: 3,260lbs
+Light Weight + 3260*5 = New Light Weight
+\`\`\`
+
+# Empty Trailer On Scale:
+* \`setup -> account -> known vehicle:\`
+* \`lcp7-5 -> defaults -> tare weight\`
+* **set to new weight**
+* **set new expiry date a month out**`;
+
+    const res = analyzeNoteContent(text, 'LCP Truck Monthly Weigh');
+    expect(res.isMajorityList).toBe(false);
+  });
+
+  it('preserves header on first line as heading rather than turning it into preamble', () => {
+    const text = `# Project Roadmap
+- [ ] Phase 1 Launch
+- [x] Initial design`;
+
+    const res = analyzeNoteContent(text, 'Project Roadmap');
+    expect(res.isChecklist).toBe(true);
+    expect(res.parsedLines[0]).toEqual({
+      type: 'heading',
+      lineIndex: 0,
+      level: 1,
+      text: 'Project Roadmap'
+    });
+    // Preamble should NOT steal the header
+    expect(res.preamble).toBeUndefined();
+  });
+
+  it('correctly parses blockquote lines as type blockquote', () => {
+    const text = `# Meeting Notes
+> Note: Review requirements before deployment.
+- [ ] Action item 1
+- [ ] Action item 2`;
+
+    const res = analyzeNoteContent(text);
+    expect(res.parsedLines[0]).toEqual({
+      type: 'heading',
+      lineIndex: 0,
+      level: 1,
+      text: 'Meeting Notes'
+    });
+    expect(res.parsedLines[1]).toEqual({
+      type: 'blockquote',
+      lineIndex: 1,
+      text: 'Note: Review requirements before deployment.'
+    });
+    expect(res.isChecklist).toBe(true);
+  });
+
+  it('renders interactive markdown with blockquote styling elements', () => {
+    const text = `# Heading\n> Important quote text`;
+    const html = renderInteractiveMarkdownHtml(text);
+    expect(html).toContain('<h1>Heading</h1>');
+    expect(html).toContain('<blockquote>');
+    expect(html).toContain('Important quote text');
   });
 });
+
+

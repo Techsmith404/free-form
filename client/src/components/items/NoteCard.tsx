@@ -129,16 +129,16 @@ export const NoteCard: React.FC<NoteCardProps> = ({
       <div>
         {/* Card Header Bar */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2 truncate">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-zinc-800 text-zinc-200 border border-zinc-700 rounded-lg">
-              <FileText className="w-3.5 h-3.5 text-brand-400" />
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-zinc-800 text-zinc-700 dark:text-zinc-200 border border-zinc-700 rounded-lg shrink-0">
+              <FileText className="w-3.5 h-3.5 text-brand-500 dark:text-brand-400" />
               <span>Note</span>
             </span>
 
             {/* Checklist progress badge if note contains any checklist items */}
             {analysis.hasChecklist && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-md border bg-indigo-500/10 text-indigo-300 border-indigo-500/30 shrink-0">
-                <CheckSquare className="w-3 h-3 text-indigo-400" />
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-md border bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-indigo-500/30 shrink-0">
+                <CheckSquare className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
                 <span>
                   {analysis.checkedCount}/{analysis.checklistCount}
                 </span>
@@ -159,13 +159,13 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               </span>
             )}
             {item.notebook_name && (
-              <span className="text-xs font-medium text-zinc-400 truncate max-w-[150px]">
+              <span className="text-xs font-medium text-zinc-400 truncate min-w-0 max-w-[150px]">
                 {item.notebook_name}
               </span>
             )}
             {Boolean(item.hide_from_all) && (
               <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/25 rounded-md"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-amber-500 dark:text-amber-400 bg-amber-400/10 border border-amber-400/25 rounded-md shrink-0"
                 title="Hidden from All Items feed"
               >
                 <EyeOff className="w-3 h-3" />
@@ -175,7 +175,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           </div>
 
           <div
-            className="flex items-center gap-0.5"
+            className="flex items-center gap-0.5 shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Toggle Single Card Expand */}

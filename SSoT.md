@@ -1,7 +1,7 @@
 # 🏛️ Free Form: Single Source of Truth (SSoT)
 
-> **Document Version:** 1.9.5  
-> **Last Updated:** October 4, 2026 — Foldable (Unfolded) & Tablet Note Editor Overhaul, Breakpoint Shift to `lg:`, Universal Header Save Action, and Elimination of Bulky Fixed Bars on Touch Screens  
+> **Document Version:** 2.0.0 (Release v0.2.0)  
+> **Last Updated:** October 9, 2026 — Official v0.2.0 Release: Android Back Gesture / Swipe-Back Navigation via `@capacitor/app`, High-Contrast Light Mode Palette & Hierarchy, Entity Escaping Resolution (`->`), First-Line Header Preservation, Blockquote (`>`) Previews, and Code Fence Protection  
 > **Target Audience:** Core Developers, Autonomous Coding Agents, System Administrators  
 > **Location:** Root directory (`/SSoT.md`)  
 > **Directive for AI Agents:** This file is the authoritative single source of truth for Free Form. You MUST read this document at the start of every session, consult it throughout implementation, and proactively update it whenever features, schemas, architectures, workarounds, or timers change.
@@ -352,8 +352,10 @@ Free Form supports two distinct, responsive browsing layouts switchable via the 
 * **Tactile Styling:** `border border-zinc-800 bg-zinc-900/95 shadow-md hover:border-zinc-700/80 active:scale-[0.98]`.
 * **Color-Coded Priority Accents:** When an item has a configured priority (`items.priority`), note cards render a 3px colored left border accent matching the priority's hex color, plus an elegant badge pill (`bg-opacity-15`, border, text).
 * **Rich Form Note Previews:** [`FormEntryCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/FormEntryCard.tsx) directly renders filled field values: golden star ratings (`★`), status badge pills, mini-tables, key-value data with units, and signature thumbnails.
-* **Rich Note Card Previews & Interactive Checklists:** [`NoteCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/NoteCard.tsx) parses and renders authentic GitHub-Flavored Markdown directly on the card with `.note-markdown` styles. Checklists rendered in note previews feature interactive, touch-friendly checkboxes with instant optimistic toggling and backend persistence.
+* **Rich Note Card Previews & Interactive Checklists:** [`NoteCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/NoteCard.tsx) parses and renders authentic GitHub-Flavored Markdown directly on the card with `.note-markdown` styles. Checklists rendered in note previews feature interactive, touch-friendly checkboxes with instant optimistic toggling and backend persistence. Typography supports prominent H1–H3 hierarchy and green-accented blockquotes (`>`) with inherited paragraph styling and subtle background fills in both light and dark themes.
 * **Special Checklist & List Card Styles (`ListCard.tsx`):** When a note is predominantly or entirely a checklist or list (analyzed via `markdownList.ts`), it is automatically elevated into a dedicated special card presentation (akin to `CounterCard`):
+  * **First-Line Header Preservation:** Leading headings (`#`, `##`, `###`) are strictly preserved as true styled headings rather than being demoted to plain-text preambles.
+  * **Blockquote (`>`) Support:** Blockquotes are parsed as dedicated lines and styled with a 3px emerald left border, subtle background container, and italic text.
   * **Checklist Mode:** Violet/Indigo theme badge (`[Checklist]`), live completion progress pill (`X/Y done` or `✓ All completed`), responsive visual progress bar, tactile checkbox buttons with smooth animations, strikethrough styling for completed items, and hierarchical indent support.
   * **Standard List Mode:** Sky/Cyan theme badge (`[List]`), item count badge, circular numbered pills (`1`, `2`, `3`) or glowing cyan bullets, refined row spacing, and overflow accordion.
 * **Accordion Controls:**
@@ -505,6 +507,21 @@ To guarantee that mobile devices, desktop browsers, and PWAs never use stale HTM
   * **Touch-Friendly Horizontal Scrolling:** Formats all actions into a single-row smooth scrollable strip (`flex items-center justify-between gap-1 px-2 py-1.5 shrink-0 overflow-x-auto no-scrollbar`), eliminating 2–3 line button wrapping (saving ~42px).
   * **Dynamic Dynamic Flex Sizing:** Removed rigid `min-h-[360px]`, `min-h-[320px]`, and `min-height: 280px` rules in favor of `min-h-0 flex-1 overflow-y-auto` and `min-h-full h-full` on `EditorContent`, `textarea`, and `.ProseMirror` in `index.css`.
   * **Foldable Space Expansion:** On an unfolded Galaxy Fold with virtual keyboard active, visible text editing space expanded from under 90px (3 short lines) to ~290px+ (15+ visible lines).
+
+### 10. System Back Gesture Navigation & Preview Card Integrity (v1.9.6)
+* **Android Hardware & Gesture Back Button Handling (`@capacitor/app`):**
+  * Integrated official `@capacitor/app` plugin with native `backButton` event listeners (`registerBackButtonHandler` in `services/native.ts`).
+  * Intercepts Android swipe-back gestures and physical back buttons. When a note editor modal, markdown viewer, form runner, or settings modal is open, swiping back seamlessly closes the modal and backs out to the note list instead of exiting/closing the app.
+  * Hierarchical fallback: if no modal is active, back actions clear active search queries or active notebook/category filters; if on the root home screen, calls `CapacitorApp.exitApp()` cleanly.
+  * Web/PWA parity: pushes lightweight history entries on modal open and catches `window.onpopstate` for native-like swipe gestures on mobile browsers.
+* **Light Mode Typography & High-Contrast Visual Architecture:**
+  * Replaced hardcoded `prose-invert` in `TipTapEditor.tsx`, `FormRunnerModal.tsx`, and `MarkdownViewerModal.tsx` with `prose dark:prose-invert`.
+  * Added explicit high-contrast theme styling in `index.css` for `.ProseMirror`, `.ProseMirror p`, `.ProseMirror li`, `.ProseMirror pre`, and `.note-markdown`. In light mode, body text and list items render in high-contrast dark zinc (`rgb(24 24 27)`), eliminating faint gray washed-out text on white surfaces.
+  * Fixed code blocks (`pre code`) in both editor and preview cards to use `--color-zinc-800` backgrounds and `--color-zinc-100` font color, preventing white-on-white unreadable code text.
+* **Preview Card Entity Escaping & Code Block Classification:**
+  * Fixed `renderInlineMarkdownHtml` in `markdownList.ts`: removed pre-emptive string replacements that converted `>` to `&gt;`, which previously caused marked to double-escape arrows in code blocks (`<code>setup -&amp;gt; account</code>`) resulting in literal `-&gt;` artifacts on screen. Configured marked's AST renderer `html()` token handler to safely escape raw HTML tags (`<script>`) without mangling markdown symbols.
+  * Enhanced `analyzeNoteContent`: detects fenced code blocks (` ``` ` or `~~~`) and markdown tables, ensuring notes with code blocks or tabular data are rendered by `NoteCard` (with full syntax formatting) rather than being mistakenly downgraded to a line-by-line `ListCard`.
+  * Fixed flex header truncation across all cards (`NoteCard`, `ListCard`, `CounterCard`, `BookmarkCard`, `FormEntryCard`) using `min-w-0 flex-1 overflow-hidden` and explicit `shrink-0` on badges and count pills, preventing item counts from being chopped into `4 item:` or `17 iten...`.
 
 ---
 

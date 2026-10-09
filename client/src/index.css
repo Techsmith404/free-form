@@ -109,11 +109,13 @@ html.dark {
 .ProseMirror {
   outline: none;
   min-height: 100%;
+  color: rgb(var(--color-zinc-100));
 }
 
 .ProseMirror p {
   margin-bottom: 0.75rem;
   line-height: 1.6;
+  color: rgb(var(--color-zinc-100));
 }
 
 .ProseMirror h1 {
@@ -163,12 +165,14 @@ html.dark {
 .prose ol li {
   margin-bottom: 0.25rem;
   display: list-item;
+  color: rgb(var(--color-zinc-100));
 }
 
 .ProseMirror ul:not([data-type="taskList"]) li > p,
 .ProseMirror ol li > p {
   margin-bottom: 0;
   display: inline;
+  color: rgb(var(--color-zinc-100));
 }
 
 .ProseMirror ul:not([data-type="taskList"]) ul {
@@ -254,12 +258,12 @@ html.dark {
   border-left: 3px solid #22c55e;
   padding-left: 1rem;
   margin: 1rem 0;
-  color: rgb(var(--color-zinc-400));
+  color: rgb(var(--color-zinc-300));
   font-style: italic;
 }
 
 .ProseMirror pre {
-  background: rgb(var(--color-zinc-950));
+  background: rgb(var(--color-zinc-800));
   border: 1px solid rgb(var(--color-zinc-700));
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
@@ -267,6 +271,14 @@ html.dark {
   font-size: 0.85rem;
   margin: 1rem 0;
   overflow-x: auto;
+  color: rgb(var(--color-zinc-100));
+}
+
+.ProseMirror pre code {
+  color: inherit;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .ProseMirror img {
@@ -278,35 +290,46 @@ html.dark {
 
 /* Note Card Markdown Preview Styling */
 .note-markdown {
-  color: rgb(var(--color-zinc-200));
+  color: rgb(var(--color-zinc-100));
   font-size: 0.875rem;
   line-height: 1.55;
   word-break: break-word;
 }
 
 .note-markdown h1 {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: rgb(var(--color-zinc-50));
-  margin-top: 0.4rem;
-  margin-bottom: 0.25rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.3rem;
+  border-bottom: 1px solid rgb(var(--color-zinc-700) / 0.5);
+  padding-bottom: 0.2rem;
 }
 
 .note-markdown h2 {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: rgb(var(--color-zinc-100));
+  margin-top: 0.45rem;
+  margin-bottom: 0.25rem;
+}
+
+.note-markdown h3 {
+  font-size: 0.975rem;
   font-weight: 700;
   color: rgb(var(--color-zinc-100));
   margin-top: 0.35rem;
   margin-bottom: 0.2rem;
 }
 
-.note-markdown h3,
 .note-markdown h4,
 .note-markdown h5,
 .note-markdown h6 {
   font-size: 0.875rem;
   font-weight: 600;
-  color: rgb(var(--color-zinc-100));
+  color: rgb(var(--color-zinc-200));
   margin-top: 0.3rem;
   margin-bottom: 0.2rem;
 }
@@ -314,6 +337,7 @@ html.dark {
 .note-markdown p {
   margin-top: 0.2rem;
   margin-bottom: 0.35rem;
+  color: rgb(var(--color-zinc-100));
 }
 
 .note-markdown ul:not([data-type="taskList"]) {
@@ -334,11 +358,13 @@ html.dark {
   margin-top: 0.15rem;
   margin-bottom: 0.15rem;
   display: list-item;
+  color: rgb(var(--color-zinc-100));
 }
 
 .note-markdown li > p {
   display: inline;
   margin: 0;
+  color: rgb(var(--color-zinc-100));
 }
 
 .note-markdown strong,
@@ -368,27 +394,37 @@ html.dark {
 }
 
 .note-markdown pre {
-  background-color: rgb(var(--color-zinc-950));
+  background-color: rgb(var(--color-zinc-800));
   border: 1px solid rgb(var(--color-zinc-700));
   border-radius: 0.5rem;
   padding: 0.5rem;
   margin: 0.35rem 0;
   overflow-x: auto;
   font-size: 0.8em;
+  color: rgb(var(--color-zinc-100));
 }
 
 .note-markdown pre code {
   background: transparent;
   border: none;
   padding: 0;
+  color: inherit;
 }
 
 .note-markdown blockquote {
-  border-left: 2px solid #22c55e;
-  padding-left: 0.5rem;
-  margin: 0.35rem 0;
-  color: rgb(var(--color-zinc-400));
+  border-left: 3px solid #22c55e;
+  padding: 0.35rem 0.75rem;
+  margin: 0.45rem 0;
+  background-color: rgb(var(--color-zinc-800) / 0.5);
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: rgb(var(--color-zinc-300));
   font-style: italic;
+}
+
+.note-markdown blockquote p {
+  color: inherit;
+  font-style: inherit;
+  margin: 0;
 }
 
 .note-markdown table {
@@ -426,9 +462,9 @@ html.dark {
 }
 
 .note-markdown li:has(input[type="checkbox"]:checked) {
-  color: rgb(113 113 122);
+  color: rgb(var(--color-zinc-500));
   text-decoration: line-through;
-  text-decoration-color: rgb(82 82 91 / 0.7);
+  text-decoration-color: rgb(var(--color-zinc-600) / 0.7);
 }
 
 .note-markdown img {

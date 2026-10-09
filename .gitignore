@@ -38,6 +38,8 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+*.old
+*.bak
 
 #Agent
 .agents/

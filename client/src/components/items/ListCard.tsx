@@ -21,6 +21,7 @@ import {
   ChecklistItemData,
   BulletItemData,
   HeadingItemData,
+  BlockquoteItemData,
   TextItemData
 } from '../../utils/markdownList.js';
 
@@ -83,13 +84,11 @@ export const ListCard: React.FC<ListCardProps> = ({
   const progressPercent = checklistCount > 0 ? Math.round((checkedCount / checklistCount) * 100) : 0;
 
   // Filter lines to display in the list body
-  // If a heading or text was extracted as preamble and matches the first line, don't duplicate it in the list body
   const displayLines = useMemo(() => {
     return parsedLines.filter((l) => {
       if (l.type === 'heading') {
-        // If heading text is identical to item.title or preamble, omit it
+        // Only omit heading if it's identical to item.title to avoid duplicate header
         if (item.title && l.text.toLowerCase() === item.title.trim().toLowerCase()) return false;
-        if (preamble && l.text.toLowerCase() === preamble.trim().toLowerCase()) return false;
       }
       if (l.type === 'text' && preamble && l.text.toLowerCase() === preamble.trim().toLowerCase()) {
         return false;
@@ -144,15 +143,15 @@ export const ListCard: React.FC<ListCardProps> = ({
       <div>
         {/* Card Header Bar */}
         <div className="flex items-center justify-between gap-2 mb-2.5">
-          <div className="flex items-center gap-2 truncate">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden">
             {isChecklist ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded-lg">
-                <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 rounded-lg shrink-0">
+                <CheckSquare className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                 <span>Checklist</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-sky-500/15 text-sky-300 border border-sky-500/30 rounded-lg">
-                <ListOrdered className="w-3.5 h-3.5 text-sky-400" />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-sky-500/15 text-sky-600 dark:text-sky-300 border border-sky-500/30 rounded-lg shrink-0">
+                <ListOrdered className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
                 <span>List</span>
               </span>
             )}
@@ -162,13 +161,13 @@ export const ListCard: React.FC<ListCardProps> = ({
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-md border shrink-0 transition-colors ${
                   isAllCompleted
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                    : 'bg-zinc-800 text-zinc-300 border-zinc-700/60'
+                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                    : 'bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-700/60'
                 }`}
               >
                 {isAllCompleted ? (
                   <>
-                    <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                    <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
                     <span>All completed</span>
                   </>
                 ) : (
@@ -178,7 +177,7 @@ export const ListCard: React.FC<ListCardProps> = ({
                 )}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-md border bg-zinc-800 text-zinc-300 border-zinc-700/60 shrink-0">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-md border bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-700/60 shrink-0">
                 <span>{totalListCount} items</span>
               </span>
             )}
@@ -198,14 +197,14 @@ export const ListCard: React.FC<ListCardProps> = ({
             )}
 
             {item.notebook_name && (
-              <span className="text-xs font-medium text-zinc-400 truncate max-w-[130px]">
+              <span className="text-xs font-medium text-zinc-400 truncate min-w-0 max-w-[130px]">
                 {item.notebook_name}
               </span>
             )}
 
             {Boolean(item.hide_from_all) && (
               <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/25 rounded-md"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-amber-500 dark:text-amber-400 bg-amber-400/10 border border-amber-400/25 rounded-md shrink-0"
                 title="Hidden from All Items feed"
               >
                 <EyeOff className="w-3 h-3" />
@@ -215,7 +214,7 @@ export const ListCard: React.FC<ListCardProps> = ({
           </div>
 
           <div
-            className="flex items-center gap-0.5"
+            className="flex items-center gap-0.5 shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Toggle Card Expand */}
@@ -301,7 +300,7 @@ export const ListCard: React.FC<ListCardProps> = ({
         {/* Optional Preamble / Subtitle */}
         {preamble && (
           <div
-            className="note-markdown text-xs sm:text-sm text-zinc-400 italic mb-2 [&_strong]:text-zinc-200 [&_em]:text-zinc-300"
+            className="note-markdown text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 italic mb-2 [&_strong]:text-zinc-900 dark:[&_strong]:text-zinc-100 [&_em]:text-zinc-800 dark:[&_em]:text-zinc-200"
             dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(preamble) }}
           />
         )}
@@ -326,9 +325,9 @@ export const ListCard: React.FC<ListCardProps> = ({
                     className={`w-5 h-5 min-w-[20px] mt-0.5 rounded-md border flex items-center justify-center transition-all duration-150 touch-manipulation cursor-pointer ${
                       line.checked
                         ? isAllCompleted
-                          ? 'bg-emerald-500/25 border-emerald-500/70 text-emerald-300'
-                          : 'bg-indigo-600/30 border-indigo-500 text-indigo-300 shadow-sm shadow-indigo-500/20'
-                        : 'border-zinc-600 bg-zinc-800/80 hover:border-zinc-400 group-hover/item:border-zinc-400'
+                          ? 'bg-emerald-500/25 border-emerald-500/70 text-emerald-600 dark:text-emerald-300'
+                          : 'bg-indigo-600/30 border-indigo-500 text-indigo-600 dark:text-indigo-300 shadow-sm shadow-indigo-500/20'
+                        : 'border-zinc-400 dark:border-zinc-600 bg-zinc-800/80 hover:border-zinc-500 dark:hover:border-zinc-400 group-hover/item:border-zinc-500'
                     }`}
                   >
                     {line.checked && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
@@ -336,8 +335,8 @@ export const ListCard: React.FC<ListCardProps> = ({
                   <span
                     className={`note-markdown inline text-sm leading-relaxed select-none transition-colors ${
                       line.checked
-                        ? 'line-through text-zinc-500 decoration-zinc-600/70 [&_strong]:text-zinc-500 [&_em]:text-zinc-500 [&_code]:text-zinc-500'
-                        : 'text-zinc-200'
+                        ? 'line-through text-zinc-500 decoration-zinc-500/70 [&_strong]:text-zinc-500 [&_em]:text-zinc-500 [&_code]:text-zinc-500'
+                        : 'text-zinc-800 dark:text-zinc-200'
                     }`}
                     dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
                   />
@@ -350,17 +349,17 @@ export const ListCard: React.FC<ListCardProps> = ({
                 <div
                   key={`bullet-${line.lineIndex}-${idx}`}
                   style={{ paddingLeft: `${Math.min(line.indent * 8, 24)}px` }}
-                  className="flex items-start gap-2.5 py-1 px-2 rounded-xl bg-zinc-800/20 border border-zinc-800/40 transition-colors"
+                  className="flex items-start gap-2.5 py-1 px-2 rounded-xl bg-zinc-800/40 dark:bg-zinc-800/20 border border-zinc-200 dark:border-zinc-800/40 transition-colors"
                 >
                   {line.isOrdered ? (
-                    <span className="w-5 h-5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-300 font-mono text-xs font-semibold flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-5 h-5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-600 dark:text-sky-300 font-mono text-xs font-semibold flex items-center justify-center shrink-0 mt-0.5">
                       {line.marker.replace('.', '')}
                     </span>
                   ) : (
-                    <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0 mt-2 shadow-[0_0_8px_rgba(56,189,248,0.5)]" />
+                    <span className="w-2 h-2 rounded-full bg-sky-500 dark:bg-sky-400 shrink-0 mt-2 shadow-[0_0_8px_rgba(56,189,248,0.5)]" />
                   )}
                   <span
-                    className="note-markdown inline text-sm leading-relaxed text-zinc-200"
+                    className="note-markdown inline text-sm leading-relaxed text-zinc-800 dark:text-zinc-200"
                     dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
                   />
                 </div>
@@ -368,20 +367,49 @@ export const ListCard: React.FC<ListCardProps> = ({
             }
 
             if (line.type === 'heading') {
+              const isH1 = line.level === 1;
+              const isH2 = line.level === 2;
               return (
                 <div
                   key={`head-${line.lineIndex}-${idx}`}
-                  className="note-markdown pt-2 pb-0.5 text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/80"
+                  className={`note-markdown ${
+                    isH1
+                      ? 'pt-3 pb-1 text-base font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50 border-b border-zinc-200 dark:border-zinc-800'
+                      : isH2
+                      ? 'pt-2 pb-0.5 text-sm font-bold tracking-tight text-zinc-800 dark:text-zinc-100 border-b border-zinc-200/60 dark:border-zinc-800/60'
+                      : 'pt-1.5 pb-0.5 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300'
+                  }`}
+                  dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
+                />
+              );
+            }
+
+            if (line.type === 'blockquote') {
+              return (
+                <div
+                  key={`quote-${line.lineIndex}-${idx}`}
+                  className="note-markdown my-1.5 pl-3 pr-2 py-1 rounded-r-lg border-l-[3px] border-emerald-500 bg-zinc-200/60 dark:bg-zinc-800/50 text-xs sm:text-sm italic text-zinc-700 dark:text-zinc-300"
                   dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
                 />
               );
             }
 
             // Paragraph / text
+            if (line.text.startsWith('>')) {
+              const quoteText = line.text.replace(/^>\s*/, '');
+              return (
+                <div
+                  key={`text-quote-${line.lineIndex}-${idx}`}
+                  className="note-markdown my-1.5 pl-3 pr-2 py-1 rounded-r-lg border-l-[3px] border-emerald-500 bg-zinc-200/60 dark:bg-zinc-800/50 text-xs sm:text-sm italic text-zinc-700 dark:text-zinc-300"
+                  dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(quoteText) }}
+                />
+              );
+            }
+
             return (
               <div
                 key={`text-${line.lineIndex}-${idx}`}
-                className="note-markdown text-xs text-zinc-400 py-0.5 leading-relaxed"
+                className="note-markdown text-xs text-zinc-700 dark:text-zinc-300 py-0.5 leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(line.text) }}
               />
             );

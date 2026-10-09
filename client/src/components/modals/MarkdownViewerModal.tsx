@@ -72,7 +72,7 @@ export const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
 
         <div className="flex-1 overflow-y-auto p-6 bg-zinc-950/40">
           <div
-            className="prose prose-invert max-w-none text-zinc-200 leading-relaxed font-sans"
+            className="prose dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed font-sans"
             dangerouslySetInnerHTML={{ __html: html }}
           />
         </div>
