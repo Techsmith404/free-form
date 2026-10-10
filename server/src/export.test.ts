@@ -141,4 +141,61 @@ describe('Export and Import Routes', () => {
     expect(parsed.notebooks).toBeDefined();
     expect(parsed.items.some((i: any) => i.id === 'item-test-import-1')).toBe(true);
   });
+
+  it('should import from ZIP archive even if it contains duplicate markdown entry names', async () => {
+    const archiverModule = (await import('archiver')).default;
+    const archive = archiverModule('zip', { zlib: { level: 9 } });
+    const chunks: Buffer[] = [];
+    archive.on('data', (c: Buffer) => chunks.push(c));
+
+    const backupContent = {
+      notebooks: [],
+      templates: [],
+      items: [
+        {
+          id: 'item-dup-zip-test',
+          title: 'Dup Archive Note',
+          type: 'note',
+          content: 'Imported despite duplicate zip entries',
+          metadata: {}
+        }
+      ],
+      tags: [],
+      itemTags: []
+    };
+
+    archive.append(JSON.stringify(backupContent), { name: 'free-form-backup.json' });
+    // Append duplicate filenames like in the user's issue
+    archive.append('content 1', { name: 'Folder/Duplicate Title-item-1.md' });
+    archive.append('content 2', { name: 'Folder/Duplicate Title-item-1.md' });
+    await archive.finalize();
+
+    const zipBuffer = Buffer.concat(chunks);
+
+    // Build multipart body
+    const boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW';
+    const multipartBody = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="backup.zip"\r\nContent-Type: application/zip\r\n\r\n`),
+      zipBuffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`)
+    ]);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import',
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`
+      },
+      payload: multipartBody
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.success).toBe(true);
+    expect(body.stats.items).toBe(1);
+
+    const savedItem = db.prepare('SELECT * FROM items WHERE id = ?').get('item-dup-zip-test') as any;
+    expect(savedItem).toBeDefined();
+    expect(savedItem.user_id).toBe(testUserId);
+  });
 });

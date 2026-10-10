@@ -1,6 +1,52 @@
 import { FastifyInstance } from 'fastify';
 import archiver from 'archiver';
+import zlib from 'zlib';
+import AdmZip from 'adm-zip';
 import { db } from '../db/index.js';
+
+function extractBackupJsonFromZip(buf: Buffer): any {
+  // 1. Try adm-zip first
+  try {
+    const zip = new AdmZip(buf);
+    const jsonEntry = zip.getEntry('free-form-backup.json');
+    if (jsonEntry) {
+      return JSON.parse(zip.readAsText(jsonEntry));
+    }
+  } catch {
+    // Fall back to direct ZIP buffer parsing if adm-zip fails on duplicates or structure
+  }
+
+  // 2. Direct ZIP buffer scanner looking for free-form-backup.json
+  const targetName = 'free-form-backup.json';
+  let offset = 0;
+  while (offset < buf.length - 30) {
+    if (buf.readUInt32LE(offset) === 0x04034b50) { // Local file header signature
+      const compMethod = buf.readUInt16LE(offset + 8);
+      const compSize = buf.readUInt32LE(offset + 18);
+      const uncompSize = buf.readUInt32LE(offset + 22);
+      const nameLen = buf.readUInt16LE(offset + 26);
+      const extraLen = buf.readUInt16LE(offset + 28);
+      const filename = buf.toString('utf8', offset + 30, offset + 30 + nameLen);
+      const dataStart = offset + 30 + nameLen + extraLen;
+
+      if (filename === targetName) {
+        let content: Buffer;
+        if (compMethod === 0) {
+          content = buf.subarray(dataStart, dataStart + uncompSize);
+        } else if (compMethod === 8) {
+          const slice = compSize > 0 ? buf.subarray(dataStart, dataStart + compSize) : buf.subarray(dataStart);
+          content = zlib.inflateRawSync(slice);
+        } else {
+          throw new Error(`Unsupported compression method ${compMethod} in ZIP`);
+        }
+        return JSON.parse(content.toString('utf8'));
+      }
+    }
+    offset++;
+  }
+
+  throw new Error('Could not find free-form-backup.json in ZIP archive');
+}
 
 export async function exportRoutes(fastify: FastifyInstance) {
   fastify.get('/api/export', async (request, reply) => {
@@ -63,10 +109,16 @@ export async function exportRoutes(fastify: FastifyInstance) {
     archive.append(JSON.stringify(fullBackup, null, 2), { name: 'free-form-backup.json' });
 
     // 2. Individual Markdown files organized by folder
+    const usedFilenames = new Set<string>();
     for (const item of items) {
       const folder = notebookMap.get(item.notebook_id || 'uncategorized') || 'Uncategorized';
       const safeTitle = (item.title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-').trim();
-      const itemFilename = `${folder}/${safeTitle}-${item.id.slice(0, 6)}.md`;
+      let itemFilename = `${folder}/${safeTitle}-${item.id}.md`;
+      let counter = 1;
+      while (usedFilenames.has(itemFilename)) {
+        itemFilename = `${folder}/${safeTitle}-${item.id}-${counter++}.md`;
+      }
+      usedFilenames.add(itemFilename);
 
       let mdContent = '';
       if (item.type === 'note' || item.type === 'form_entry') {
@@ -114,16 +166,9 @@ export async function exportRoutes(fastify: FastifyInstance) {
           return reply.code(400).send({ error: 'Invalid JSON file: ' + err.message });
         }
       } else {
-        // Handle ZIP file
+        // Handle ZIP file (with resilient fallback to direct parsing if duplicate entries exist)
         try {
-          const AdmZip = (await import('adm-zip')).default;
-          const zip = new AdmZip(buffer);
-          const jsonEntry = zip.getEntry('free-form-backup.json');
-          if (!jsonEntry) {
-            return reply.code(400).send({ error: 'ZIP does not contain free-form-backup.json' });
-          }
-          const jsonText = zip.readAsText(jsonEntry);
-          backupData = JSON.parse(jsonText);
+          backupData = extractBackupJsonFromZip(buffer);
         } catch (err: any) {
           return reply.code(400).send({ error: 'Failed to extract ZIP archive: ' + err.message });
         }
