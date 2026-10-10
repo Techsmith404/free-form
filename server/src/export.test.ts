@@ -198,4 +198,48 @@ describe('Export and Import Routes', () => {
     expect(savedItem).toBeDefined();
     expect(savedItem.user_id).toBe(testUserId);
   });
+
+  it('should import notebooks where child notebook appears before parent notebook', async () => {
+    const payload = {
+      notebooks: [
+        {
+          id: 'nb-child-1',
+          name: 'Child Notebook',
+          parent_id: 'nb-parent-1'
+        },
+        {
+          id: 'nb-parent-1',
+          name: 'Parent Notebook',
+          parent_id: null
+        }
+      ],
+      items: [
+        {
+          id: 'item-in-child-nb',
+          notebook_id: 'nb-child-1',
+          title: 'Note in Child',
+          type: 'note'
+        }
+      ]
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/import',
+      headers: { 'content-type': 'application/json' },
+      payload
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(body.success).toBe(true);
+    expect(body.stats.notebooks).toBe(2);
+
+    const childNb = db.prepare('SELECT * FROM notebooks WHERE id = ?').get('nb-child-1') as any;
+    expect(childNb).toBeDefined();
+    expect(childNb.parent_id).toBe('nb-parent-1');
+
+    const parentNb = db.prepare('SELECT * FROM notebooks WHERE id = ?').get('nb-parent-1') as any;
+    expect(parentNb).toBeDefined();
+  });
 });

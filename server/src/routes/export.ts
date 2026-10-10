@@ -196,6 +196,18 @@ export async function exportRoutes(fastify: FastifyInstance) {
       tags: 0
     };
 
+    const knownNotebookIds = new Set<string>(notebooks.map((n: any) => n.id));
+    const existingNotebookRows = db.prepare('SELECT id FROM notebooks').all() as any[];
+    for (const r of existingNotebookRows) {
+      knownNotebookIds.add(r.id);
+    }
+
+    const knownTemplateIds = new Set<string>(templates.map((t: any) => t.id));
+    const existingTemplateRows = db.prepare('SELECT id FROM templates').all() as any[];
+    for (const r of existingTemplateRows) {
+      knownTemplateIds.add(r.id);
+    }
+
     const importTx = db.transaction(() => {
       // 1. Notebooks
       const insertNb = db.prepare(`
@@ -217,6 +229,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
 
       for (const nb of notebooks) {
         if (!nb.id || !nb.name) continue;
+        const parentId = (nb.parent_id && nb.parent_id !== nb.id && knownNotebookIds.has(nb.parent_id)) ? nb.parent_id : null;
         insertNb.run(
           nb.id,
           userId,
@@ -224,7 +237,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
           nb.description || '',
           nb.color || '#22c55e',
           nb.icon || 'folder',
-          nb.parent_id || null,
+          parentId,
           nb.default_template_id || null,
           nb.view_mode || 'grid',
           nb.sort_order || 0,
@@ -253,6 +266,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
 
       for (const tpl of templates) {
         if (!tpl.id || !tpl.name) continue;
+        const defaultNbId = (tpl.default_notebook_id && knownNotebookIds.has(tpl.default_notebook_id)) ? tpl.default_notebook_id : null;
         const schema = typeof tpl.fields_schema === 'object' ? JSON.stringify(tpl.fields_schema) : (tpl.fields_schema || '[]');
         insertTpl.run(
           tpl.id,
@@ -261,7 +275,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
           tpl.description || '',
           tpl.icon || 'file-text',
           tpl.color || '#3b82f6',
-          tpl.default_notebook_id || null,
+          defaultNbId,
           schema,
           tpl.enable_processed_tracking !== undefined ? (tpl.enable_processed_tracking ? 1 : 0) : 1,
           tpl.created_at || new Date().toISOString(),
@@ -311,11 +325,12 @@ export async function exportRoutes(fastify: FastifyInstance) {
 
       for (const item of items) {
         if (!item.id || !item.type) continue;
+        const notebookId = (item.notebook_id && knownNotebookIds.has(item.notebook_id)) ? item.notebook_id : null;
         const metaStr = typeof item.metadata === 'object' ? JSON.stringify(item.metadata) : (item.metadata || '{}');
         insertItem.run(
           item.id,
           userId,
-          item.notebook_id || null,
+          notebookId,
           item.title || 'Untitled',
           item.type,
           item.content || '',
@@ -345,7 +360,13 @@ export async function exportRoutes(fastify: FastifyInstance) {
       }
     });
 
-    importTx();
+    // Bulk restore execution with foreign key pragma safeguarding
+    db.pragma('foreign_keys = OFF');
+    try {
+      importTx();
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
 
     return {
       success: true,
