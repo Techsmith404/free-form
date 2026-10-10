@@ -1044,6 +1044,30 @@ export async function fetchUsers(): Promise<User[]> {
   return res.json();
 }
 
+export async function importBackup(file: File): Promise<{ success: boolean; stats: any; error?: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const headers: Record<string, string> = {};
+  const token = getAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(apiUrl('/import'), {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to import backup');
+  }
+
+  return res.json();
+}
+
 export const api = {
   apiUrl,
   getServerUrl,
@@ -1083,6 +1107,7 @@ export const api = {
   uploadFile,
   uploadBase64,
   getExportUrl,
+  importBackup,
   fetchTimers,
   createTimer,
   startTimer,
@@ -1103,4 +1128,5 @@ export const api = {
   fetchConflicts,
   resolveConflict
 };
+
 

@@ -73,7 +73,16 @@ describe('Free Form Backend Core', () => {
   });
 
   it('should record counter increments in history', () => {
-    const item = db.prepare("SELECT * FROM items WHERE type = 'counter'").get() as any;
+    let item = db.prepare("SELECT * FROM items WHERE type = 'counter'").get() as any;
+    if (!item) {
+      const now = new Date().toISOString();
+      const id = 'item-counter-test-history';
+      db.prepare(`
+        INSERT INTO items (id, title, type, content, metadata, is_favorite, is_pinned, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, 'Test Counter', 'counter', '', JSON.stringify({ count: 5, step: 1 }), 0, 0, now, now);
+      item = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
+    }
     expect(item).toBeDefined();
 
     const meta = JSON.parse(item.metadata);

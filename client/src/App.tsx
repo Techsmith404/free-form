@@ -19,7 +19,8 @@ import {
   updateItem,
   deleteTemplate,
   fetchSettings,
-  updateSettings
+  updateSettings,
+  importBackup
 } from './api/index.js';
 import {
   dbGetNotebooks,
@@ -626,6 +627,47 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleImportBackup = async (file: File) => {
+    try {
+      setConfirmModal({
+        open: true,
+        title: 'Importing Backup...',
+        message: `Processing "${file.name}"... Please wait while notes and templates are restored.`,
+        confirmText: 'Importing...',
+        confirmVariant: 'primary',
+        icon: 'info',
+        isLoading: true,
+        onConfirm: () => {}
+      });
+
+      const res = await importBackup(file);
+      await loadData();
+      await refreshConflicts();
+
+      setConfirmModal({
+        open: true,
+        title: 'Backup Restored Successfully!',
+        message: `Restored ${res.stats?.items || 0} items, ${res.stats?.notebooks || 0} notebooks, and ${res.stats?.templates || 0} templates.`,
+        confirmText: 'Done',
+        confirmVariant: 'primary',
+        icon: 'info',
+        isLoading: false,
+        onConfirm: () => closeConfirmModal()
+      });
+    } catch (err: any) {
+      setConfirmModal({
+        open: true,
+        title: 'Import Failed',
+        message: err.message || 'An error occurred during backup import.',
+        confirmText: 'Close',
+        confirmVariant: 'danger',
+        icon: 'warning',
+        isLoading: false,
+        onConfirm: () => closeConfirmModal()
+      });
+    }
+  };
+
   // Quick Add Action from Navbar or Notebook
   const handleQuickAdd = () => {
     if (activeNotebook?.default_template_id) {
@@ -662,6 +704,7 @@ export const App: React.FC = () => {
         onCloseMobile={() => setMobileSidebarOpen(false)}
         onOpenSettings={() => setSettingsModalOpen(true)}
         onOpenUsersModal={() => setManageUsersModalOpen(true)}
+        onImportBackup={handleImportBackup}
       />
 
       {/* Main Content Area */}

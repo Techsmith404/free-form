@@ -27,7 +27,8 @@ import {
   Settings as SettingsIcon,
   GitMerge,
   Key,
-  LogIn
+  LogIn,
+  Upload
 } from 'lucide-react';
 
 
@@ -52,6 +53,7 @@ interface SidebarProps {
   onCloseMobile: () => void;
   onOpenSettings?: () => void;
   onOpenUsersModal?: () => void;
+  onImportBackup?: (file: File) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -72,12 +74,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
   onOpenSettings,
-  onOpenUsersModal
+  onOpenUsersModal,
+  onImportBackup
 }) => {
   const { user, logout } = useAuth();
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [expandedNotebooks, setExpandedNotebooks] = useState<Record<string, boolean>>({});
   const { timers, reminders, conflicts, setTimersModalOpen, setConflictModalOpen } = useRealtime();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const activeTimersCount = timers.filter((t) => t.status === 'running' || t.status === 'ringing').length;
   const pendingRemindersCount = reminders.filter((r) => r.status === 'pending' || r.status === 'triggered').length;
@@ -86,6 +90,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     hapticTap();
     action();
     onCloseMobile();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onImportBackup) {
+      onImportBackup(file);
+    }
+    if (e.target) e.target.value = '';
   };
 
   return (
@@ -505,6 +517,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Download className="w-4 h-4 text-zinc-400" />
             <span>Export Backup (ZIP)</span>
           </a>
+
+          {onImportBackup && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".zip,.json,application/zip,application/json"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-bold border border-zinc-800 transition shadow-sm touch-manipulation cursor-pointer"
+              >
+                <Upload className="w-4 h-4 text-zinc-400" />
+                <span>Import Backup (ZIP / JSON)</span>
+              </button>
+            </>
+          )}
 
           {user && (
             <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
