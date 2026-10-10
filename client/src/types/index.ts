@@ -262,5 +262,32 @@ export interface SyncResponseBody {
   };
 }
 
+export type UserRole = 'owner' | 'admin' | 'member';
 
+export interface User {
+  id: string;
+  username: string;
+  email?: string;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+}
 
+export interface Invite {
+  code: string;
+  created_by: string;
+  creator_name?: string;
+  role: UserRole;
+  max_uses: number;
+  uses_count: number;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface AuthStatusResponse {
+  accounts_enabled: boolean;
+  auth_required: boolean;
+  needs_setup: boolean;
+  authenticated: boolean;
+  user?: User | null;
+}

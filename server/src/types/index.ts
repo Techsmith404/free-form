@@ -244,3 +244,47 @@ export type RealtimeEvent =
   | { type: 'CONFLICT_CREATED'; payload: { conflict: ConflictRecord } }
   | { type: 'CONFLICT_RESOLVED'; payload: { conflictId: string } };
 
+export type UserRole = 'owner' | 'admin' | 'member';
+
+export interface User {
+  id: string;
+  username: string;
+  email?: string;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserWithPassword extends User {
+  password_hash: string;
+}
+
+export interface Invite {
+  code: string;
+  created_by: string;
+  role: UserRole;
+  max_uses: number;
+  uses_count: number;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface Session {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  user_agent?: string;
+  ip_address?: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface AuthStatusResponse {
+  accounts_enabled: boolean;
+  auth_required: boolean;
+  needs_setup: boolean;
+  authenticated: boolean;
+  user?: User | null;
+}
+
+

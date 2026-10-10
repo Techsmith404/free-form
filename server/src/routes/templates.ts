@@ -6,14 +6,22 @@ import { FormTemplate } from '../types/index.js';
 
 export async function templateRoutes(fastify: FastifyInstance) {
   // List all templates
-  fastify.get('/api/templates', async () => {
-    const rows = db.prepare(`
+  fastify.get('/api/templates', async (request) => {
+    const userId = (request as any).user?.id;
+    let sql = `
       SELECT 
         t.*,
         (SELECT COUNT(*) FROM items WHERE items.type = 'form_entry' AND json_extract(items.metadata, '$.template_id') = t.id) as usage_count
       FROM templates t
-      ORDER BY t.name ASC
-    `).all() as any[];
+    `;
+    const params: any[] = [];
+    if (userId) {
+      sql += ` WHERE (t.user_id = ? OR t.user_id IS NULL)`;
+      params.push(userId);
+    }
+    sql += ` ORDER BY t.name ASC`;
+
+    const rows = db.prepare(sql).all(...params) as any[];
 
     return rows.map((r) => ({
       ...r,
@@ -25,7 +33,14 @@ export async function templateRoutes(fastify: FastifyInstance) {
   // Get single template
   fastify.get('/api/templates/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const row = db.prepare('SELECT * FROM templates WHERE id = ?').get(id) as any;
+    const userId = (request as any).user?.id;
+    let sql = 'SELECT * FROM templates WHERE id = ?';
+    const params: any[] = [id];
+    if (userId) {
+      sql += ' AND (user_id = ? OR user_id IS NULL)';
+      params.push(userId);
+    }
+    const row = db.prepare(sql).get(...params) as any;
 
     if (!row) {
       return reply.code(404).send({ error: 'Template not found' });
@@ -41,6 +56,7 @@ export async function templateRoutes(fastify: FastifyInstance) {
   // Create template
   fastify.post('/api/templates', async (request, reply) => {
     const body = request.body as any;
+    const userId = (request as any).user?.id || null;
     const id = body.id || `tpl-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 
@@ -57,9 +73,9 @@ export async function templateRoutes(fastify: FastifyInstance) {
     const fields_schema = JSON.stringify(body.fields_schema || []);
 
     db.prepare(`
-      INSERT INTO templates (id, name, description, icon, color, default_notebook_id, fields_schema, enable_processed_tracking, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, description, icon, color, default_notebook_id, fields_schema, enable_processed_tracking, now, now);
+      INSERT INTO templates (id, user_id, name, description, icon, color, default_notebook_id, fields_schema, enable_processed_tracking, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, name, description, icon, color, default_notebook_id, fields_schema, enable_processed_tracking, now, now);
 
     const created = db.prepare('SELECT * FROM templates WHERE id = ?').get(id) as any;
     return reply.code(201).send({

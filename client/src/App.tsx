@@ -51,7 +51,10 @@ import { TimersAndRemindersModal } from './components/modals/TimersAndRemindersM
 import { ConfirmModal } from './components/modals/ConfirmModal.js';
 import { SettingsModal } from './components/modals/SettingsModal.js';
 import { ConflictResolverModal } from './components/modals/ConflictResolverModal.js';
+import { AuthModal } from './components/modals/AuthModal.js';
+import { ManageUsersModal } from './components/modals/ManageUsersModal.js';
 import { useRealtime } from './context/RealtimeContext.js';
+import { useAuth } from './context/AuthContext.js';
 import { hapticTap, hapticMedium, hapticSuccess, registerBackButtonHandler, isNative } from './services/native.js';
 
 import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers, Clock } from 'lucide-react';
@@ -76,6 +79,9 @@ export const App: React.FC = () => {
     reconnectAttempt,
     manualReconnect
   } = useRealtime();
+
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const [manageUsersModalOpen, setManageUsersModalOpen] = useState(false);
 
   // Settings State & Theme
   const [settings, setSettings] = useState<AppSettings>({
@@ -655,6 +661,7 @@ export const App: React.FC = () => {
         isOpenMobile={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
         onOpenSettings={() => setSettingsModalOpen(true)}
+        onOpenUsersModal={() => setManageUsersModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -1431,6 +1438,15 @@ export const App: React.FC = () => {
           loadData();
           refreshConflicts();
         }}
+      />
+
+      {/* Auth Screen (Login / Register / Initial Owner Setup) */}
+      {!isAuthenticated && !isAuthLoading && <AuthModal />}
+
+      {/* Owner & Admin Invite / User Management Modal */}
+      <ManageUsersModal
+        isOpen={manageUsersModalOpen}
+        onClose={() => setManageUsersModalOpen(false)}
       />
     </div>
   );

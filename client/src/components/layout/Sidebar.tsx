@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Notebook, FormTemplate, Tag } from '../../types/index.js';
 import { getExportUrl } from '../../api/index.js';
 import { useRealtime } from '../../context/RealtimeContext.js';
+import { useAuth } from '../../context/AuthContext.js';
 import { hapticTap, hapticMedium } from '../../services/native.js';
 import {
   Folder,
@@ -24,7 +25,9 @@ import {
   Clock,
   Bell,
   Settings as SettingsIcon,
-  GitMerge
+  GitMerge,
+  Key,
+  LogIn
 } from 'lucide-react';
 
 
@@ -48,6 +51,7 @@ interface SidebarProps {
   isOpenMobile: boolean;
   onCloseMobile: () => void;
   onOpenSettings?: () => void;
+  onOpenUsersModal?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -67,8 +71,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTemplateRunner,
   isOpenMobile,
   onCloseMobile,
-  onOpenSettings
+  onOpenSettings,
+  onOpenUsersModal
 }) => {
+  const { user, logout } = useAuth();
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [expandedNotebooks, setExpandedNotebooks] = useState<Record<string, boolean>>({});
   const { timers, reminders, conflicts, setTimersModalOpen, setConflictModalOpen } = useRealtime();
@@ -499,6 +505,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Download className="w-4 h-4 text-zinc-400" />
             <span>Export Backup (ZIP)</span>
           </a>
+
+          {user && (
+            <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                  {user.username[0]}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-zinc-200 truncate">{user.username}</div>
+                  <div className="text-[10px] text-zinc-500 capitalize">{user.role}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {(user.role === 'owner' || user.role === 'admin') && onOpenUsersModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenUsersModal}
+                    title="Manage Users & Invites"
+                    className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition"
+                  >
+                    <Key className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={logout}
+                  title="Sign Out"
+                  className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition"
+                >
+                  <LogIn className="w-4 h-4 rotate-180" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
     </>

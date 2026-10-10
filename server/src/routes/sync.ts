@@ -7,6 +7,7 @@ import crypto from 'crypto';
 
 export const syncRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: SyncRequestBody }>('/api/sync', async (request, reply) => {
+    const userId = (request as any).user?.id || null;
     const { device_name = 'Unknown Device', last_sync_timestamp, mutations = [] } = request.body || {};
     const serverTime = new Date().toISOString();
     const processedIds: string[] = [];
@@ -30,10 +31,11 @@ export const syncRoutes: FastifyPluginAsync = async (fastify) => {
               }
 
               db.prepare(`
-                INSERT INTO items (id, notebook_id, title, type, content, metadata, is_favorite, is_pinned, is_archived, hide_from_all, priority, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO items (id, user_id, notebook_id, title, type, content, metadata, is_favorite, is_pinned, is_archived, hide_from_all, priority, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).run(
                 data.id,
+                userId,
                 data.notebook_id ?? null,
                 data.title || 'Untitled',
                 data.type,
@@ -383,16 +385,30 @@ export const syncRoutes: FastifyPluginAsync = async (fastify) => {
     let conflictRows: any[];
 
     if (last_sync_timestamp) {
-      itemRows = db.prepare('SELECT * FROM items WHERE updated_at > ?').all(last_sync_timestamp) as any[];
-      notebookRows = db.prepare('SELECT * FROM notebooks WHERE updated_at > ?').all(last_sync_timestamp) as any[];
-      templateRows = db.prepare('SELECT * FROM templates WHERE updated_at > ?').all(last_sync_timestamp) as any[];
-      reminderRows = db.prepare('SELECT * FROM reminders WHERE updated_at > ?').all(last_sync_timestamp) as any[];
+      if (userId) {
+        itemRows = db.prepare('SELECT * FROM items WHERE updated_at > ? AND (user_id = ? OR user_id IS NULL OR id IN (SELECT item_id FROM item_shares WHERE shared_with_user_id = ?))').all(last_sync_timestamp, userId, userId) as any[];
+        notebookRows = db.prepare('SELECT * FROM notebooks WHERE updated_at > ? AND (user_id = ? OR user_id IS NULL)').all(last_sync_timestamp, userId) as any[];
+        templateRows = db.prepare('SELECT * FROM templates WHERE updated_at > ? AND (user_id = ? OR user_id IS NULL)').all(last_sync_timestamp, userId) as any[];
+        reminderRows = db.prepare('SELECT * FROM reminders WHERE updated_at > ? AND (user_id = ? OR user_id IS NULL)').all(last_sync_timestamp, userId) as any[];
+      } else {
+        itemRows = db.prepare('SELECT * FROM items WHERE updated_at > ?').all(last_sync_timestamp) as any[];
+        notebookRows = db.prepare('SELECT * FROM notebooks WHERE updated_at > ?').all(last_sync_timestamp) as any[];
+        templateRows = db.prepare('SELECT * FROM templates WHERE updated_at > ?').all(last_sync_timestamp) as any[];
+        reminderRows = db.prepare('SELECT * FROM reminders WHERE updated_at > ?').all(last_sync_timestamp) as any[];
+      }
       settingsRows = db.prepare('SELECT * FROM settings WHERE updated_at > ?').all(last_sync_timestamp) as any[];
     } else {
-      itemRows = db.prepare('SELECT * FROM items').all() as any[];
-      notebookRows = db.prepare('SELECT * FROM notebooks').all() as any[];
-      templateRows = db.prepare('SELECT * FROM templates').all() as any[];
-      reminderRows = db.prepare('SELECT * FROM reminders').all() as any[];
+      if (userId) {
+        itemRows = db.prepare('SELECT * FROM items WHERE (user_id = ? OR user_id IS NULL OR id IN (SELECT item_id FROM item_shares WHERE shared_with_user_id = ?))').all(userId, userId) as any[];
+        notebookRows = db.prepare('SELECT * FROM notebooks WHERE (user_id = ? OR user_id IS NULL)').all(userId) as any[];
+        templateRows = db.prepare('SELECT * FROM templates WHERE (user_id = ? OR user_id IS NULL)').all(userId) as any[];
+        reminderRows = db.prepare('SELECT * FROM reminders WHERE (user_id = ? OR user_id IS NULL)').all(userId) as any[];
+      } else {
+        itemRows = db.prepare('SELECT * FROM items').all() as any[];
+        notebookRows = db.prepare('SELECT * FROM notebooks').all() as any[];
+        templateRows = db.prepare('SELECT * FROM templates').all() as any[];
+        reminderRows = db.prepare('SELECT * FROM reminders').all() as any[];
+      }
       settingsRows = db.prepare('SELECT * FROM settings').all() as any[];
     }
 

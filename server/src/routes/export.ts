@@ -4,10 +4,26 @@ import { db } from '../db/index.js';
 
 export async function exportRoutes(fastify: FastifyInstance) {
   fastify.get('/api/export', async (request, reply) => {
-    const notebooks = db.prepare('SELECT * FROM notebooks').all() as any[];
-    const items = db.prepare('SELECT * FROM items WHERE is_archived = 0').all() as any[];
-    const templates = db.prepare('SELECT * FROM templates').all() as any[];
-    const tags = db.prepare('SELECT * FROM tags').all() as any[];
+    const userId = (request as any).user?.id;
+    const filterSql = userId ? 'WHERE user_id = ? OR user_id IS NULL' : '';
+    const filterParams = userId ? [userId] : [];
+
+    const notebooks = (userId
+      ? db.prepare('SELECT * FROM notebooks WHERE user_id = ? OR user_id IS NULL').all(userId)
+      : db.prepare('SELECT * FROM notebooks').all()) as any[];
+
+    const items = (userId
+      ? db.prepare('SELECT * FROM items WHERE is_archived = 0 AND (user_id = ? OR user_id IS NULL)').all(userId)
+      : db.prepare('SELECT * FROM items WHERE is_archived = 0').all()) as any[];
+
+    const templates = (userId
+      ? db.prepare('SELECT * FROM templates WHERE user_id = ? OR user_id IS NULL').all(userId)
+      : db.prepare('SELECT * FROM templates').all()) as any[];
+
+    const tags = (userId
+      ? db.prepare('SELECT * FROM tags WHERE user_id = ? OR user_id IS NULL').all(userId)
+      : db.prepare('SELECT * FROM tags').all()) as any[];
+
     const itemTags = db.prepare('SELECT * FROM item_tags').all() as any[];
 
     // Notebook map for folder naming

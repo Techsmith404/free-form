@@ -227,6 +227,65 @@ export function initDatabase() {
     `);
   } catch {}
 
+  // Auth & Multi-user tables
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS invites (
+        code TEXT PRIMARY KEY,
+        created_by TEXT REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'member',
+        max_uses INTEGER DEFAULT 1,
+        uses_count INTEGER DEFAULT 0,
+        expires_at TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT UNIQUE NOT NULL,
+        user_agent TEXT,
+        ip_address TEXT,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS item_shares (
+        id TEXT PRIMARY KEY,
+        item_id TEXT REFERENCES items(id) ON DELETE CASCADE,
+        shared_with_user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        permission TEXT DEFAULT 'view',
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+      CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
+      CREATE INDEX IF NOT EXISTS idx_item_shares_item ON item_shares(item_id);
+      CREATE INDEX IF NOT EXISTS idx_item_shares_user ON item_shares(shared_with_user_id);
+    `);
+  } catch {}
+
+  // Add user_id to existing core tables if not present
+  const userScopedTables = ['notebooks', 'items', 'templates', 'timers', 'reminders', 'tags'];
+  for (const table of userScopedTables) {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE;`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_user ON ${table}(user_id);`);
+    } catch {}
+  }
+
   // Seed default settings
   const now = new Date().toISOString();
   const defaultPriorities = [

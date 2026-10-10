@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App.js';
 import { RealtimeProvider } from './context/RealtimeContext.js';
+import { AuthProvider } from './context/AuthContext.js';
 import { initServerUrl } from './api/index.js';
 import { initNativeApp } from './services/native.js';
 import './index.css';
@@ -25,9 +26,11 @@ async function bootstrap() {
 
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
-      <RealtimeProvider>
-        <App />
-      </RealtimeProvider>
+      <AuthProvider>
+        <RealtimeProvider>
+          <App />
+        </RealtimeProvider>
+      </AuthProvider>
     </React.StrictMode>
   );
 }

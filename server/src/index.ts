@@ -19,6 +19,12 @@ import { syncRoutes } from './routes/sync.js';
 import { conflictsRoutes } from './routes/conflicts.js';
 import { addClient, startRealtimeTicker, stopRealtimeTicker } from './services/realtime.js';
 
+import fastifyCookie from '@fastify/cookie';
+import { hashToken } from './services/auth.js';
+import { authRoutes } from './routes/auth.js';
+import { db } from './db/index.js';
+import { User } from './types/index.js';
+
 const app = fastify({
   logger: true,
   trustProxy: true
@@ -29,6 +35,8 @@ async function main() {
   initDatabase();
 
   // 2. Plugins
+  await app.register(fastifyCookie);
+
   await app.register(cors, {
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -41,6 +49,63 @@ async function main() {
   await app.register(multipart, {
     limits: {
       fileSize: 50 * 1024 * 1024 // 50MB
+    }
+  });
+
+  // Global Auth hook
+  app.decorateRequest('user', null);
+  app.addHook('onRequest', async (request, reply) => {
+    const accountsEnabled = process.env.ACCOUNTS_ENABLED === 'true';
+    const authRequired = process.env.AUTH_REQUIRED === 'true' || accountsEnabled;
+
+    // Check token from cookie or Authorization header
+    const token = (request.cookies as any)?.ff_session || request.headers.authorization?.replace(/^Bearer\s+/i, '');
+    let resolvedUser: User | null = null;
+
+    if (token) {
+      const tokenHash = hashToken(token);
+      const sessionRow = db.prepare(`
+        SELECT s.*, u.id as user_id, u.username, u.email, u.role, u.created_at, u.updated_at
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.token_hash = ? AND s.expires_at > ?
+      `).get(tokenHash, new Date().toISOString()) as any;
+
+      if (sessionRow) {
+        resolvedUser = {
+          id: sessionRow.user_id,
+          username: sessionRow.username,
+          email: sessionRow.email,
+          role: sessionRow.role,
+          created_at: sessionRow.created_at,
+          updated_at: sessionRow.updated_at
+        };
+      }
+    }
+
+    // Default mock user if auth is disabled for single-user mode
+    if (!resolvedUser && !authRequired) {
+      resolvedUser = {
+        id: 'usr-default',
+        username: 'default',
+        role: 'owner',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+    }
+
+    (request as any).user = resolvedUser;
+
+    // Check auth requirement for protected /api routes
+    const pathname = request.url.split('?')[0];
+    const isPublic =
+      pathname.startsWith('/api/auth') ||
+      pathname === '/api/health' ||
+      pathname === '/api/ws' ||
+      !pathname.startsWith('/api');
+
+    if (authRequired && !resolvedUser && !isPublic) {
+      return reply.code(401).send({ error: 'Authentication required' });
     }
   });
 
@@ -57,6 +122,7 @@ async function main() {
   });
 
   // 3. API Routes
+  await app.register(authRoutes);
   await app.register(notebookRoutes);
   await app.register(itemRoutes);
   await app.register(templateRoutes);

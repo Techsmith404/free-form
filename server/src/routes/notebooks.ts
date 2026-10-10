@@ -4,29 +4,43 @@ import crypto from 'crypto';
 
 export async function notebookRoutes(fastify: FastifyInstance) {
   // Get all notebooks with item count
-  fastify.get('/api/notebooks', async () => {
-    const rows = db.prepare(`
+  fastify.get('/api/notebooks', async (request) => {
+    const userId = (request as any).user?.id;
+    let sql = `
       SELECT 
         n.*,
         (SELECT COUNT(*) FROM items WHERE items.notebook_id = n.id AND items.is_archived = 0) as item_count,
         t.name as default_template_name
       FROM notebooks n
       LEFT JOIN templates t ON n.default_template_id = t.id
-      ORDER BY n.sort_order ASC, n.name ASC
-    `).all();
+    `;
+    const params: any[] = [];
+    if (userId) {
+      sql += ` WHERE (n.user_id = ? OR n.user_id IS NULL)`;
+      params.push(userId);
+    }
+    sql += ` ORDER BY n.sort_order ASC, n.name ASC`;
 
+    const rows = db.prepare(sql).all(...params);
     return rows;
   });
 
   // Get single notebook
   fastify.get('/api/notebooks/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const notebook = db.prepare(`
+    const userId = (request as any).user?.id;
+    let sql = `
       SELECT n.*, t.name as default_template_name
       FROM notebooks n
       LEFT JOIN templates t ON n.default_template_id = t.id
       WHERE n.id = ?
-    `).get(id);
+    `;
+    const params: any[] = [id];
+    if (userId) {
+      sql += ` AND (n.user_id = ? OR n.user_id IS NULL)`;
+      params.push(userId);
+    }
+    const notebook = db.prepare(sql).get(...params);
 
     if (!notebook) {
       return reply.code(404).send({ error: 'Notebook not found' });
@@ -38,6 +52,7 @@ export async function notebookRoutes(fastify: FastifyInstance) {
   // Create notebook
   fastify.post('/api/notebooks', async (request, reply) => {
     const body = request.body as any;
+    const userId = (request as any).user?.id || null;
     const id = body.id || `nb-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 
@@ -56,9 +71,23 @@ export async function notebookRoutes(fastify: FastifyInstance) {
     const hide_from_all = body.hide_from_all ? 1 : 0;
 
     db.prepare(`
-      INSERT INTO notebooks (id, name, description, color, icon, parent_id, default_template_id, view_mode, sort_order, hide_from_all, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, description, color, icon, parent_id, default_template_id, view_mode, sort_order, hide_from_all, now, now);
+      INSERT INTO notebooks (id, user_id, name, description, color, icon, parent_id, default_template_id, view_mode, sort_order, hide_from_all, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      userId,
+      name,
+      description,
+      color,
+      icon,
+      parent_id,
+      default_template_id,
+      view_mode,
+      sort_order,
+      hide_from_all,
+      now,
+      now
+    );
 
     const created = db.prepare('SELECT * FROM notebooks WHERE id = ?').get(id);
     return reply.code(201).send(created);

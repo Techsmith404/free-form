@@ -2,10 +2,10 @@ name: Build & Release Android APK
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -69,7 +69,7 @@ jobs:
           fi
           
           cp "$APK_SRC" "dist-apk/${APK_NAME}"
-          cp "$APK_SRC" "dist-apk/free-form.apk"
+          cp docker-compose.yml dist-apk/docker-compose.yml
           echo "apk_name=${APK_NAME}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
@@ -80,13 +80,13 @@ jobs:
           path: dist-apk/${{ steps.pkg_info.outputs.apk_name }}
           retention-days: 30
 
-      - name: Create GitHub Release (On Tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create or Update GitHub Release (On Tag or Release)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist-apk/${{ steps.pkg_info.outputs.apk_name }}
-            dist-apk/free-form.apk
+            dist-apk/docker-compose.yml
           name: Free Form ${{ github.ref_name }}
           draft: false
           prerelease: false

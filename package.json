@@ -1,6 +1,6 @@
 {
   "name": "free-form",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "private": true,
   "description": "A self-hostable, multi-modal markdown note & form engine web app and PWA",
   "license": "MIT",

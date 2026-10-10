@@ -1,8 +1,6 @@
 services:
   free-form:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/techsmith404/free-form:latest
     container_name: free-form
     restart: unless-stopped
     ports:
@@ -12,5 +10,7 @@ services:
       - HOST=0.0.0.0
       - DATA_DIR=/data
       - NODE_ENV=production
+      # - ACCOUNTS_ENABLED=true
+      # - AUTH_REQUIRED=true
     volumes:
       - ./data:/data

@@ -7,6 +7,7 @@ import { FormTemplate, ItemType } from '../types/index.js';
 export async function itemRoutes(fastify: FastifyInstance) {
   // List items with filters
   fastify.get('/api/items', async (request) => {
+    const userId = (request as any).user?.id;
     const query = request.query as {
       notebook_id?: string;
       type?: ItemType;
@@ -28,6 +29,11 @@ export async function itemRoutes(fastify: FastifyInstance) {
       WHERE 1=1
     `;
     const params: any[] = [];
+
+    if (userId) {
+      sql += ` AND (i.user_id = ? OR i.user_id IS NULL OR i.id IN (SELECT item_id FROM item_shares WHERE shared_with_user_id = ?))`;
+      params.push(userId, userId);
+    }
 
     // Filter by archived status (default to active items, is_archived = 0)
     if (query.is_archived === '1') {
@@ -183,12 +189,14 @@ export async function itemRoutes(fastify: FastifyInstance) {
     const is_pinned = body.is_pinned ? 1 : 0;
     const hide_from_all = body.hide_from_all ? 1 : 0;
     const priority = body.priority || '';
+    const userId = (request as any).user?.id || null;
 
     db.prepare(`
-      INSERT INTO items (id, notebook_id, title, type, content, metadata, priority, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (id, user_id, notebook_id, title, type, content, metadata, priority, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
+      userId,
       notebook_id,
       title,
       type,

@@ -12,7 +12,10 @@ import {
   AppSettings,
   ConflictRecord,
   SyncRequestBody,
-  SyncResponseBody
+  SyncResponseBody,
+  AuthStatusResponse,
+  User,
+  Invite
 } from '../types/index.js';
 import {
   dbGetItems,
@@ -112,6 +115,63 @@ export async function setServerUrl(url: string): Promise<string> {
   return clean;
 }
 
+const AUTH_TOKEN_KEY = 'freeform_auth_token';
+let cachedAuthToken: string = '';
+
+export function getAuthToken(): string {
+  if (cachedAuthToken) return cachedAuthToken;
+  if (typeof window !== 'undefined') {
+    try {
+      const local = localStorage.getItem(AUTH_TOKEN_KEY);
+      if (local) {
+        cachedAuthToken = local;
+        return cachedAuthToken;
+      }
+    } catch {}
+  }
+  return '';
+}
+
+export async function setAuthToken(token: string | null): Promise<void> {
+  cachedAuthToken = token || '';
+  if (typeof window !== 'undefined') {
+    try {
+      if (token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+      } else {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+      }
+    } catch {}
+    try {
+      if (token) {
+        await Preferences.set({ key: AUTH_TOKEN_KEY, value: token });
+      } else {
+        await Preferences.remove({ key: AUTH_TOKEN_KEY });
+      }
+    } catch {}
+  }
+}
+
+export async function initAuthToken(): Promise<string> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await Preferences.get({ key: AUTH_TOKEN_KEY });
+      if (res.value) {
+        cachedAuthToken = res.value;
+        return cachedAuthToken;
+      }
+    } catch {}
+    try {
+      const local = localStorage.getItem(AUTH_TOKEN_KEY);
+      if (local) {
+        cachedAuthToken = local;
+        return cachedAuthToken;
+      }
+    } catch {}
+  }
+  return '';
+}
+
 export function apiUrl(endpoint: string): string {
   const base = getServerUrl();
   const cleanEp = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
@@ -123,22 +183,24 @@ export function apiUrl(endpoint: string): string {
 }
 
 export function getWebSocketUrl(): string {
+  const token = getAuthToken();
+  const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
   const base = getServerUrl();
   if (base) {
     try {
       const url = new URL(base);
       const isHttps = url.protocol === 'https:';
       const host = url.host;
-      return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws`;
+      return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws${tokenQuery}`;
     } catch {
       const isHttps = base.startsWith('https://');
       const host = base.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-      return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws`;
+      return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws${tokenQuery}`;
     }
   }
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const host = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
-  return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws`;
+  return `${isHttps ? 'wss:' : 'ws:'}//${host}/api/ws${tokenQuery}`;
 }
 
 export function resolveAssetUrl(url: string | null | undefined): string {
@@ -172,9 +234,17 @@ export async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const headers = new Headers(init?.headers);
+  const token = getAuthToken();
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
   try {
     const res = await fetch(input, {
       ...init,
+      headers,
       signal: controller.signal
     });
     return res;
@@ -863,12 +933,135 @@ export async function resolveConflict(
   return { success: true, conflictId: id };
 }
 
+// =============================================================================
+// AUTH & USER API
+// =============================================================================
+
+export async function checkAuthStatus(): Promise<AuthStatusResponse> {
+  const res = await fetchWithTimeout(apiUrl('/auth/status'), {}, 2500);
+  if (!res.ok) {
+    throw new Error('Failed to fetch auth status');
+  }
+  return res.json();
+}
+
+export async function setupOwner(data: { username: string; password: string; email?: string }): Promise<{ token: string; user: User }> {
+  const res = await fetch(apiUrl('/auth/setup'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to setup owner account');
+  }
+  const result = await res.json();
+  if (result.token) {
+    await setAuthToken(result.token);
+  }
+  return result;
+}
+
+export async function loginUser(data: { username: string; password: string; remember_me?: boolean }): Promise<{ token: string; user: User }> {
+  const res = await fetch(apiUrl('/auth/login'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Invalid credentials');
+  }
+  const result = await res.json();
+  if (result.token) {
+    await setAuthToken(result.token);
+  }
+  return result;
+}
+
+export async function registerUser(data: { username: string; password: string; email?: string; invite_code: string }): Promise<{ token: string; user: User }> {
+  const res = await fetch(apiUrl('/auth/register'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Registration failed');
+  }
+  const result = await res.json();
+  if (result.token) {
+    await setAuthToken(result.token);
+  }
+  return result;
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    await fetch(apiUrl('/auth/logout'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch {}
+  await setAuthToken(null);
+}
+
+export async function fetchInvites(): Promise<Invite[]> {
+  const res = await fetchWithTimeout(apiUrl('/auth/invites'));
+  if (!res.ok) throw new Error('Failed to fetch invites');
+  return res.json();
+}
+
+export async function createInvite(data: { role?: string; max_uses?: number; expires_in_days?: number }): Promise<Invite> {
+  const res = await fetch(apiUrl('/auth/invites'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAuthToken()}`
+    },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create invite');
+  }
+  return res.json();
+}
+
+export async function deleteInvite(code: string): Promise<void> {
+  const res = await fetch(`${apiUrl('/auth/invites')}/${code}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${getAuthToken()}`
+    }
+  });
+  if (!res.ok) throw new Error('Failed to delete invite');
+}
+
+export async function fetchUsers(): Promise<User[]> {
+  const res = await fetchWithTimeout(apiUrl('/auth/users'));
+  if (!res.ok) throw new Error('Failed to fetch users');
+  return res.json();
+}
+
 export const api = {
   apiUrl,
   getServerUrl,
   setServerUrl,
   getWebSocketUrl,
   resolveAssetUrl,
+  getAuthToken,
+  setAuthToken,
+  initAuthToken,
+  checkAuthStatus,
+  setupOwner,
+  loginUser,
+  registerUser,
+  logoutUser,
+  fetchInvites,
+  createInvite,
+  deleteInvite,
+  fetchUsers,
   fetchNotebooks,
   createNotebook,
   updateNotebook,
@@ -910,3 +1103,4 @@ export const api = {
   fetchConflicts,
   resolveConflict
 };
+
