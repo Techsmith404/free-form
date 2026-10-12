@@ -1,0 +1,15 @@
+# Litestream Continuous WAL Replication Configuration for Free Form
+# Streams SQLite WAL changes to any S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, Backblaze B2)
+
+dbs:
+  - path: /data/freeform.db
+    replicas:
+      - type: s3
+        bucket: "${LITESTREAM_BUCKET}"
+        path: "${LITESTREAM_PATH:-freeform-db}"
+        endpoint: "${LITESTREAM_ENDPOINT}"
+        region: "${LITESTREAM_REGION:-us-east-1}"
+        access-key-id: "${LITESTREAM_ACCESS_KEY_ID}"
+        secret-access-key: "${LITESTREAM_SECRET_ACCESS_KEY}"
+        sync-interval: "${LITESTREAM_SYNC_INTERVAL:-1s}"
+        retention: "${LITESTREAM_RETENTION:-72h}"

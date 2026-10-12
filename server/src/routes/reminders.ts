@@ -12,8 +12,9 @@ import {
 
 export async function reminderRoutes(fastify: FastifyInstance) {
   // Get all reminders
-  fastify.get('/api/reminders', async () => {
-    return getAllReminders();
+  fastify.get('/api/reminders', async (request) => {
+    const userId = (request as any).user?.id;
+    return getAllReminders(userId);
   });
 
   // Get single reminder
@@ -28,6 +29,7 @@ export async function reminderRoutes(fastify: FastifyInstance) {
 
   // Create reminder
   fastify.post('/api/reminders', async (request, reply) => {
+    const userId = (request as any).user?.id;
     const body = request.body as any;
     if (!body || !body.title?.trim() || !body.due_date) {
       return reply.code(400).send({ error: 'Title and valid due_date are required' });
@@ -38,7 +40,8 @@ export async function reminderRoutes(fastify: FastifyInstance) {
       notes: body.notes?.trim() || '',
       due_date: new Date(body.due_date).toISOString(),
       priority: body.priority || 'normal',
-      notebook_id: body.notebook_id || null
+      notebook_id: body.notebook_id || null,
+      user_id: userId || null
     });
 
     return reply.code(201).send(reminder);

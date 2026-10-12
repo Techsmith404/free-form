@@ -14,12 +14,16 @@ import {
   Download,
   Settings,
   ShieldCheck,
-  Check
+  Check,
+  MoonStar,
+  Minimize2,
+  LayoutGrid,
+  Maximize2
 } from 'lucide-react';
-import { ThemeMode, NotePriority, AppSettings } from '../../types/index.js';
+import { ThemeMode, AccentColor, NotePriority, AppSettings, DensityMode } from '../../types/index.js';
 import { useRealtime } from '../../context/RealtimeContext.js';
 import { getExportUrl, getServerUrl, setServerUrl, apiUrl } from '../../api/index.js';
-import { isNative } from '../../services/native.js';
+import { isNative, hapticTap } from '../../services/native.js';
 import { syncService, SyncState } from '../../services/syncService.js';
 import { GitMerge, Database, CheckCircle2 } from 'lucide-react';
 
@@ -28,6 +32,10 @@ interface SettingsModalProps {
   onClose: () => void;
   currentTheme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
+  currentAccent?: AccentColor;
+  onAccentChange?: (accent: AccentColor) => void;
+  currentDensity?: DensityMode;
+  onDensityChange?: (density: DensityMode) => void;
   priorities: NotePriority[];
   onPrioritiesChange: (priorities: NotePriority[]) => void;
 }
@@ -51,11 +59,24 @@ const DEFAULT_PRIORITIES: NotePriority[] = [
   { id: 'urgent', label: 'Urgent', color: '#ef4444' }
 ];
 
+const ACCENT_COLORS: { id: AccentColor; label: string; color: string }[] = [
+  { id: 'emerald', label: 'Emerald', color: '#22c55e' },
+  { id: 'violet', label: 'Violet', color: '#8b5cf6' },
+  { id: 'cyan', label: 'Neon Cyan', color: '#06b6d4' },
+  { id: 'rose', label: 'Rose', color: '#f43f5e' },
+  { id: 'amber', label: 'Amber', color: '#f59e0b' },
+  { id: 'blue', label: 'Electric Blue', color: '#3b82f6' }
+];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   currentTheme,
   onThemeChange,
+  currentAccent = 'emerald',
+  onAccentChange,
+  currentDensity = 'cozy',
+  onDensityChange,
   priorities,
   onPrioritiesChange
 }) => {
@@ -130,6 +151,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
         className="w-full sm:max-w-2xl bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col h-[90dvh] sm:h-[85vh] sm:max-h-[750px] overflow-hidden animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
@@ -143,7 +167,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-zinc-100">Settings</h2>
+              <h2 id="settings-modal-title" className="text-lg font-bold text-zinc-100">Settings</h2>
               <p className="text-xs text-zinc-400">Preferences, color coding & server sync</p>
             </div>
           </div>
@@ -221,7 +245,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   Choose your interface theme or let Free Form automatically match your device.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5">
                   {/* Light Theme */}
                   <button
                     type="button"
@@ -236,8 +260,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Sun className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="font-bold text-sm block">Light Mode</span>
-                      <span className="text-[11px] text-zinc-400">Clean, crisp high contrast</span>
+                      <span className="font-bold text-sm block">Light</span>
+                      <span className="text-[11px] text-zinc-400">Crisp high contrast</span>
                     </div>
                   </button>
 
@@ -255,8 +279,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Moon className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="font-bold text-sm block">Dark Mode</span>
-                      <span className="text-[11px] text-zinc-400">Deep obsidian dark aesthetic</span>
+                      <span className="font-bold text-sm block">Dark</span>
+                      <span className="text-[11px] text-zinc-400">Obsidian surface</span>
+                    </div>
+                  </button>
+
+                  {/* OLED Black Theme */}
+                  <button
+                    type="button"
+                    onClick={() => onThemeChange('oled')}
+                    className={`flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border text-center transition touch-manipulation ${
+                      currentTheme === 'oled'
+                        ? 'bg-brand-500/10 border-brand-500 text-brand-400 shadow-md shadow-brand-500/10'
+                        : 'bg-black border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    <div className="p-2.5 rounded-full bg-zinc-900 border border-zinc-800 text-purple-400">
+                      <MoonStar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-sm block text-zinc-100">OLED Black</span>
+                      <span className="text-[11px] text-zinc-400">Pure #000000 pixel off</span>
                     </div>
                   </button>
 
@@ -274,8 +317,124 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Laptop className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="font-bold text-sm block">Follow System</span>
-                      <span className="text-[11px] text-zinc-400">Sync with device schedule</span>
+                      <span className="font-bold text-sm block">System</span>
+                      <span className="text-[11px] text-zinc-400">Match device mode</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Brand Accent Matrix */}
+              <div className="pt-5 border-t border-zinc-800/80">
+                <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wide">
+                  Brand Accent Color
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Personalize the interface accent color across buttons, active badges, and highlights.
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 mt-3.5">
+                  {ACCENT_COLORS.map((acc) => {
+                    const isSelected = (currentAccent || 'emerald') === acc.id;
+                    return (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => onAccentChange?.(acc.id)}
+                        className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition touch-manipulation ${
+                          isSelected
+                            ? 'bg-zinc-800/90 border-brand-500 ring-1 ring-brand-500/40 shadow-sm'
+                            : 'bg-zinc-950/80 border-zinc-800 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full shrink-0 shadow-sm ring-1 ring-white/10"
+                          style={{ backgroundColor: acc.color }}
+                        />
+                        <span className={`text-xs font-semibold truncate ${isSelected ? 'text-white' : 'text-zinc-300'}`}>
+                          {acc.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Card & Feed Density */}
+              <div className="pt-5 border-t border-zinc-800/80">
+                <div className="mb-3">
+                  <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wide">
+                    Card & Feed Density
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Controls spacing, font size, and preview line heights across the dashboard.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Compact */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticTap();
+                      onDensityChange?.('compact');
+                    }}
+                    className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border text-center transition touch-manipulation ${
+                      (currentDensity || 'cozy') === 'compact'
+                        ? 'bg-brand-500/10 border-brand-500 text-brand-400 shadow-md shadow-brand-500/10'
+                        : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    <div className="p-2 rounded-full bg-zinc-800 text-brand-400">
+                      <Minimize2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-sm block">Compact</span>
+                      <span className="text-[11px] text-zinc-400">Tight spacing, 2-line clamp</span>
+                    </div>
+                  </button>
+
+                  {/* Comfortable */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticTap();
+                      onDensityChange?.('comfortable');
+                    }}
+                    className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border text-center transition touch-manipulation ${
+                      currentDensity === 'comfortable'
+                        ? 'bg-brand-500/10 border-brand-500 text-brand-400 shadow-md shadow-brand-500/10'
+                        : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    <div className="p-2 rounded-full bg-zinc-800 text-brand-400">
+                      <LayoutGrid className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-sm block">Comfortable</span>
+                      <span className="text-[11px] text-zinc-400">Balanced, 4-line clamp</span>
+                    </div>
+                  </button>
+
+                  {/* Cozy (Default) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hapticTap();
+                      onDensityChange?.('cozy');
+                    }}
+                    className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border text-center transition touch-manipulation ${
+                      (currentDensity || 'cozy') === 'cozy'
+                        ? 'bg-brand-500/10 border-brand-500 text-brand-400 shadow-md shadow-brand-500/10'
+                        : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    <div className="p-2 rounded-full bg-zinc-800 text-brand-400">
+                      <Maximize2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-sm block">Cozy (Default)</span>
+                      <span className="text-[11px] text-zinc-400">Spacious, 6-line clamp</span>
                     </div>
                   </button>
                 </div>

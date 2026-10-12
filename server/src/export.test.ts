@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fastify, { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
-import { db, initDatabase } from './db/index.js';
+import { db, initDatabase, UPLOADS_DIR } from './db/index.js';
 import { exportRoutes } from './routes/export.js';
 import AdmZip from 'adm-zip';
+import path from 'path';
+import fs from 'fs';
 
 describe('Export and Import Routes', () => {
   let app: FastifyInstance;
@@ -242,4 +244,228 @@ describe('Export and Import Routes', () => {
     const parentNb = db.prepare('SELECT * FROM notebooks WHERE id = ?').get('nb-parent-1') as any;
     expect(parentNb).toBeDefined();
   });
+
+  it('should export and import timers, reminders, settings, counter_history, and upload files', async () => {
+    // 1. Setup entities to export
+    const timerId = `tm-exp-${Date.now()}`;
+    const reminderId = `rem-exp-${Date.now()}`;
+    const counterItemId = `item-cnt-${Date.now()}`;
+    const counterHistoryId = `ch-exp-${Date.now()}`;
+    const testUploadName = `test-export-${Date.now()}.txt`;
+    const testUploadPath = path.join(UPLOADS_DIR, testUploadName);
+    const now = new Date().toISOString();
+
+    fs.writeFileSync(testUploadPath, 'Sample upload attachment content');
+
+    db.prepare(`
+      INSERT INTO items (id, user_id, title, type, metadata, created_at, updated_at)
+      VALUES (?, ?, 'Exported Counter Item', 'counter', '{"count": 5}', ?, ?)
+    `).run(counterItemId, testUserId, now, now);
+
+    db.prepare(`
+      INSERT INTO counter_history (id, item_id, delta, new_value, note, created_at)
+      VALUES (?, ?, 5, 5, 'Initial count', ?)
+    `).run(counterHistoryId, counterItemId, now);
+
+    db.prepare(`
+      INSERT INTO timers (id, user_id, title, duration_seconds, remaining_seconds, status, created_at, updated_at)
+      VALUES (?, ?, 'Exported Timer', 300, 300, 'idle', ?, ?)
+    `).run(timerId, testUserId, now, now);
+
+    db.prepare(`
+      INSERT INTO reminders (id, user_id, title, notes, due_date, status, priority, created_at, updated_at)
+      VALUES (?, ?, 'Exported Reminder', 'Reminder notes', ?, 'pending', 'high', ?, ?)
+    `).run(reminderId, testUserId, now, now, now);
+
+    db.prepare(`
+      INSERT OR REPLACE INTO settings (key, value, updated_at)
+      VALUES ('custom_test_key', 'test_setting_value', ?)
+    `).run(now);
+
+    // 2. Export to ZIP
+    const exportRes = await app.inject({
+      method: 'GET',
+      url: '/api/export'
+    });
+    expect(exportRes.statusCode).toBe(200);
+
+    const exportZip = new AdmZip(exportRes.rawPayload);
+    const backupEntry = exportZip.getEntry('free-form-backup.json');
+    expect(backupEntry).toBeDefined();
+
+    const backupJson = JSON.parse(exportZip.readAsText(backupEntry!));
+    expect(Array.isArray(backupJson.timers)).toBe(true);
+    expect(backupJson.timers.some((t: any) => t.id === timerId)).toBe(true);
+
+    expect(Array.isArray(backupJson.reminders)).toBe(true);
+    expect(backupJson.reminders.some((r: any) => r.id === reminderId)).toBe(true);
+
+    expect(Array.isArray(backupJson.settings)).toBe(true);
+    expect(backupJson.settings.some((s: any) => s.key === 'custom_test_key')).toBe(true);
+
+    expect(Array.isArray(backupJson.counter_history)).toBe(true);
+    expect(backupJson.counter_history.some((c: any) => c.id === counterHistoryId)).toBe(true);
+
+    const uploadEntry = exportZip.getEntry(`uploads/${testUploadName}`);
+    expect(uploadEntry).toBeDefined();
+    expect(exportZip.readAsText(uploadEntry!)).toBe('Sample upload attachment content');
+
+    // Clean up created file in UPLOADS_DIR
+    try { fs.unlinkSync(testUploadPath); } catch {}
+
+    // 3. Import from a custom ZIP containing all new items & upload file
+    const archiverModule = (await import('archiver')).default;
+    const archive = archiverModule('zip', { zlib: { level: 9 } });
+    const chunks: Buffer[] = [];
+    archive.on('data', (c: Buffer) => chunks.push(c));
+
+    const importTimerId = `tm-imp-${Date.now()}`;
+    const importReminderId = `rem-imp-${Date.now()}`;
+    const importCounterItemId = `item-cnt-imp-${Date.now()}`;
+    const importCounterHistoryId = `ch-imp-${Date.now()}`;
+    const importedUploadName = `imported-attachment-${Date.now()}.txt`;
+
+    const newBackupData = {
+      notebooks: [],
+      templates: [],
+      items: [
+        {
+          id: importCounterItemId,
+          title: 'Imported Counter',
+          type: 'counter',
+          metadata: { count: 42 }
+        }
+      ],
+      tags: [],
+      itemTags: [],
+      timers: [
+        {
+          id: importTimerId,
+          title: 'Imported Pomodoro',
+          duration_seconds: 1500,
+          remaining_seconds: 1500,
+          status: 'idle'
+        }
+      ],
+      reminders: [
+        {
+          id: importReminderId,
+          title: 'Imported Task Reminder',
+          notes: 'Do not forget',
+          due_date: now,
+          status: 'pending',
+          priority: 'urgent'
+        }
+      ],
+      settings: [
+        {
+          key: 'imported_setting_key',
+          value: 'active'
+        }
+      ],
+      counter_history: [
+        {
+          id: importCounterHistoryId,
+          item_id: importCounterItemId,
+          delta: 42,
+          new_value: 42,
+          note: 'Imported count'
+        }
+      ]
+    };
+
+    archive.append(JSON.stringify(newBackupData), { name: 'free-form-backup.json' });
+    archive.append('Restored attachment payload', { name: `uploads/${importedUploadName}` });
+    await archive.finalize();
+
+    const zipBuffer = Buffer.concat(chunks);
+    const boundary = '----WebKitFormBoundaryFullBackupTest';
+    const multipartBody = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="full-backup.zip"\r\nContent-Type: application/zip\r\n\r\n`),
+      zipBuffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`)
+    ]);
+
+    const importRes = await app.inject({
+      method: 'POST',
+      url: '/api/import',
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`
+      },
+      payload: multipartBody
+    });
+
+    expect(importRes.statusCode).toBe(200);
+    const importResult = JSON.parse(importRes.payload);
+    expect(importResult.success).toBe(true);
+    expect(importResult.stats.timers).toBe(1);
+    expect(importResult.stats.reminders).toBe(1);
+    expect(importResult.stats.counter_history).toBe(1);
+    expect(importResult.stats.settings).toBe(1);
+
+    // Verify imported data in SQLite
+    const savedTimer = db.prepare('SELECT * FROM timers WHERE id = ?').get(importTimerId) as any;
+    expect(savedTimer).toBeDefined();
+    expect(savedTimer.title).toBe('Imported Pomodoro');
+    expect(savedTimer.user_id).toBe(testUserId);
+
+    const savedReminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(importReminderId) as any;
+    expect(savedReminder).toBeDefined();
+    expect(savedReminder.priority).toBe('urgent');
+    expect(savedReminder.user_id).toBe(testUserId);
+
+    const savedHistory = db.prepare('SELECT * FROM counter_history WHERE id = ?').get(importCounterHistoryId) as any;
+    expect(savedHistory).toBeDefined();
+    expect(savedHistory.new_value).toBe(42);
+
+    const savedSetting = db.prepare('SELECT * FROM settings WHERE key = ?').get('imported_setting_key') as any;
+    expect(savedSetting).toBeDefined();
+    expect(savedSetting.value).toBe('active');
+
+    // Verify upload file was written to disk
+    const importedFilePath = path.join(UPLOADS_DIR, importedUploadName);
+    expect(fs.existsSync(importedFilePath)).toBe(true);
+    expect(fs.readFileSync(importedFilePath, 'utf8')).toBe('Restored attachment payload');
+
+    // Cleanup
+    try { fs.unlinkSync(importedFilePath); } catch {}
+  });
+
+  it('should stream a markdown ZIP for selected note IDs via POST /api/export/batch', async () => {
+    const noteId1 = 'item-exp-batch-1';
+    const noteId2 = 'item-exp-batch-2';
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO items (id, user_id, title, content, type, is_archived, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'note', 0, ?, ?), (?, ?, ?, ?, 'note', 0, ?, ?)
+    `).run(
+      noteId1, testUserId, 'Batch Note Alpha', '# Alpha Content\n- Task 1', now, now,
+      noteId2, testUserId, 'Batch Note Beta', '# Beta Content\n- Task 2', now, now
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/export/batch',
+      payload: { ids: [noteId1, noteId2] }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('application/zip');
+    expect(res.headers['content-disposition']).toContain('free-form-selected-notes');
+
+    const zip = new AdmZip(res.rawPayload);
+    const entries = zip.getEntries();
+    expect(entries.length).toBe(2);
+
+    const alphaEntry = entries.find((e) => e.entryName.includes('Batch Note Alpha'));
+    expect(alphaEntry).toBeDefined();
+    const alphaContent = alphaEntry!.getData().toString('utf8');
+    expect(alphaContent).toContain('# Alpha Content');
+    expect(alphaContent).toContain('title: "Batch Note Alpha"');
+
+    // Clean up
+    db.prepare('DELETE FROM items WHERE id IN (?, ?)').run(noteId1, noteId2);
+  });
 });
+

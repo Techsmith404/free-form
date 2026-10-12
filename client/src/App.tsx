@@ -6,8 +6,12 @@ import {
   Tag,
   ItemType,
   ThemeMode,
+  AccentColor,
   NotePriority,
-  AppSettings
+  AppSettings,
+  SortOption,
+  ViewMode,
+  DensityMode
 } from './types/index.js';
 import {
   fetchNotebooks,
@@ -17,10 +21,17 @@ import {
   deleteNotebook,
   deleteItem,
   updateItem,
+  createItem,
   deleteTemplate,
   fetchSettings,
   updateSettings,
-  importBackup
+  importBackup,
+  emptyTrash,
+  restoreAllTrash,
+  batchUpdateItems,
+  batchDeleteItems,
+  batchMoveItems,
+  exportBatchNotes
 } from './api/index.js';
 import {
   dbGetNotebooks,
@@ -30,7 +41,9 @@ import {
 } from './services/offlineDb.js';
 import { Sidebar } from './components/layout/Sidebar.js';
 import { Navbar } from './components/layout/Navbar.js';
+import { BulkActionBar } from './components/layout/BulkActionBar.js';
 import { TemplatesView } from './components/views/TemplatesView.js';
+import { KanbanView } from './components/views/KanbanView.js';
 import { NoteCard } from './components/items/NoteCard.js';
 import { FormEntryCard } from './components/items/FormEntryCard.js';
 import { CounterCard } from './components/items/CounterCard.js';
@@ -54,11 +67,22 @@ import { SettingsModal } from './components/modals/SettingsModal.js';
 import { ConflictResolverModal } from './components/modals/ConflictResolverModal.js';
 import { AuthModal } from './components/modals/AuthModal.js';
 import { ManageUsersModal } from './components/modals/ManageUsersModal.js';
+import { CommandPaletteModal } from './components/modals/CommandPaletteModal.js';
+import { BatchMoveModal } from './components/modals/BatchMoveModal.js';
 import { useRealtime } from './context/RealtimeContext.js';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js';
 import { useAuth } from './context/AuthContext.js';
 import { hapticTap, hapticMedium, hapticSuccess, registerBackButtonHandler, isNative } from './services/native.js';
+import { normalizeLinkTitle } from './utils/wikilinks.js';
 
-import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers, Clock } from 'lucide-react';
+import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers, Clock, RotateCcw, Trash2 } from 'lucide-react';
+
+const PRIORITY_WEIGHT: Record<string, number> = {
+  urgent: 4,
+  high: 3,
+  medium: 2,
+  low: 1
+};
 
 const DEFAULT_PRIORITIES: NotePriority[] = [
   { id: 'low', label: 'Low', color: '#3b82f6' },
@@ -91,13 +115,20 @@ export const App: React.FC = () => {
   });
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
-  // Apply Theme (Light / Dark / Follow System)
+  // Apply Theme (Light / Dark / Follow System / OLED) & Accent Color
   useEffect(() => {
     const applyTheme = () => {
+      const isOled = settings.theme === 'oled';
       const isDark =
+        isOled ||
         settings.theme === 'dark' ||
         (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
       document.documentElement.classList.toggle('dark', isDark);
+      document.documentElement.classList.toggle('oled', isOled);
+
+      const accent = settings.accent_color || 'emerald';
+      document.documentElement.setAttribute('data-accent', accent);
     };
 
     applyTheme();
@@ -108,7 +139,7 @@ export const App: React.FC = () => {
       mediaQuery.addEventListener('change', listener);
       return () => mediaQuery.removeEventListener('change', listener);
     }
-  }, [settings.theme]);
+  }, [settings.theme, settings.accent_color]);
 
   // Data State
 
@@ -122,12 +153,53 @@ export const App: React.FC = () => {
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'favorites' | 'templates' | 'trash'>('all');
   const [selectedType, setSelectedType] = useState<ItemType | 'all'>('all');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('ff_view_mode');
+    if (saved === 'list' || saved === 'board') {
+      return saved;
+    }
+    return 'grid';
+  });
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem('ff_view_mode', mode);
+  };
+
+  const [density, setDensity] = useState<DensityMode>(() => {
+    const saved = localStorage.getItem('ff_density') as DensityMode | null;
+    if (saved === 'compact' || saved === 'comfortable' || saved === 'cozy') {
+      return saved;
+    }
+    return 'cozy';
+  });
+
+  const handleDensityChange = (newDensity: DensityMode) => {
+    setDensity(newDensity);
+    localStorage.setItem('ff_density', newDensity);
+    setSettings((prev) => ({ ...prev, density: newDensity }));
+    updateSettings({ density: newDensity }).catch((err) => {
+      console.error('Failed to update density setting', err);
+    });
+  };
   const [expandAllCards, setExpandAllCards] = useState<boolean>(false);
   const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileFabMenuOpen, setMobileFabMenuOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<SortOption>(() => {
+    const saved = localStorage.getItem('ff_sort_option');
+    if (saved === 'created' || saved === 'title' || saved === 'priority') {
+      return saved;
+    }
+    return 'updated';
+  });
+
+  const handleSortOptionChange = (option: SortOption) => {
+    setSortOption(option);
+    localStorage.setItem('ff_sort_option', option);
+  };
 
   // Modal States
   const [noteModal, setNoteModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
@@ -135,7 +207,7 @@ export const App: React.FC = () => {
   const [bookmarkModal, setBookmarkModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
   const [counterModal, setCounterModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
   const [posterModal, setPosterModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
-  const [formRunnerModal, setFormRunnerModal] = useState<{ open: boolean; template?: FormTemplate | null; existingItem?: Item | null }>({ open: false });
+  const [formRunnerModal, setFormRunnerModal] = useState<{ open: boolean; template?: FormTemplate | null; existingItem?: Item | null; isRepeatLog?: boolean }>({ open: false });
   const [templateBuilderModal, setTemplateBuilderModal] = useState<{ open: boolean; template?: FormTemplate | null }>({ open: false });
   const [markdownViewerModal, setMarkdownViewerModal] = useState<{ open: boolean; item?: Item | null }>({ open: false });
   const [confirmModal, setConfirmModal] = useState<{
@@ -155,12 +227,31 @@ export const App: React.FC = () => {
     onConfirm: () => {}
   });
 
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchMoveModalOpen, setBatchMoveModalOpen] = useState(false);
+
   const closeConfirmModal = () => {
     setConfirmModal((prev) => ({ ...prev, open: false, isLoading: false }));
   };
 
   // Back Navigation Handler: backs out of modals, drawers, search, or filters
   const handleBackAction = useCallback((): boolean => {
+    // 0a. Batch selection active -> clear selection
+    if (selectedIds.size > 0) {
+      setSelectedIds(new Set());
+      return true;
+    }
+    // 0b. Batch move modal
+    if (batchMoveModalOpen) {
+      setBatchMoveModalOpen(false);
+      return true;
+    }
+    // 0c. Omni-Command Palette
+    if (commandPaletteOpen) {
+      setCommandPaletteOpen(false);
+      return true;
+    }
     // 1. Confirm dialog
     if (confirmModal.open) {
       closeConfirmModal();
@@ -245,6 +336,9 @@ export const App: React.FC = () => {
 
     return false; // Nothing to back out of (at root)
   }, [
+    selectedIds.size,
+    batchMoveModalOpen,
+    commandPaletteOpen,
     confirmModal.open,
     noteModal.open,
     markdownViewerModal.open,
@@ -270,6 +364,18 @@ export const App: React.FC = () => {
     backActionRef.current = handleBackAction;
   }, [handleBackAction]);
 
+  // Omni-Command Palette Global Keyboard Shortcut (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Native Android Back Button / Swipe Back listener
   useEffect(() => {
     const unregister = registerBackButtonHandler(() => {
@@ -283,6 +389,7 @@ export const App: React.FC = () => {
     if (isNative) return;
 
     const isAnyModalOpen =
+      commandPaletteOpen ||
       confirmModal.open ||
       noteModal.open ||
       markdownViewerModal.open ||
@@ -311,6 +418,7 @@ export const App: React.FC = () => {
       };
     }
   }, [
+    commandPaletteOpen,
     confirmModal.open,
     noteModal.open,
     markdownViewerModal.open,
@@ -383,6 +491,9 @@ export const App: React.FC = () => {
       setTags(tgs);
       if (stgs) {
         setSettings(stgs);
+        if (stgs.density && !localStorage.getItem('ff_density')) {
+          setDensity(stgs.density);
+        }
       }
     } catch (err) {
       console.error('Error loading data', err);
@@ -398,6 +509,16 @@ export const App: React.FC = () => {
       await updateSettings(updated);
     } catch (err) {
       console.error('Failed to update theme setting', err);
+    }
+  };
+
+  const handleAccentColorChange = async (newAccent: AccentColor) => {
+    const updated = { ...settings, accent_color: newAccent };
+    setSettings(updated);
+    try {
+      await updateSettings(updated);
+    } catch (err) {
+      console.error('Failed to update accent color setting', err);
     }
   };
 
@@ -458,7 +579,7 @@ export const App: React.FC = () => {
 
   // Filtered Items
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
+    const list = items.filter((item) => {
       // 0. Trash / Archive filter
       if (activeFilter === 'trash') {
         if (!item.is_archived) return false;
@@ -484,16 +605,54 @@ export const App: React.FC = () => {
       if (selectedType !== 'all' && item.type !== selectedType) {
         return false;
       }
-      // 4. Search Query
+      // 4. Tag Filter
+      if (selectedTag) {
+        const cleanTag = selectedTag.toLowerCase().replace(/^#/, '');
+        const hasTag = item.tags?.some((t) => {
+          const tagName = typeof t === 'string' ? t : t.name;
+          return tagName.toLowerCase().replace(/^#/, '') === cleanTag;
+        });
+        if (!hasTag) return false;
+      }
+      // 5. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesTitle = item.title.toLowerCase().includes(q);
         const matchesContent = item.content.toLowerCase().includes(q);
-        if (!matchesTitle && !matchesContent) return false;
+        const matchesTags = item.tags?.some((t) => {
+          const tagName = typeof t === 'string' ? t : t.name;
+          return tagName.toLowerCase().includes(q.replace(/^#/, ''));
+        });
+        if (!matchesTitle && !matchesContent && !matchesTags) return false;
       }
       return true;
     });
-  }, [items, activeNotebookId, activeFilter, selectedType, searchQuery, showHiddenItems, notebooks]);
+
+    return list.sort((a, b) => {
+      // Pinned items always stay on top
+      if (b.is_pinned !== a.is_pinned) {
+        return (b.is_pinned || 0) - (a.is_pinned || 0);
+      }
+
+      switch (sortOption) {
+        case 'created':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'title':
+          return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
+        case 'priority': {
+          const weightA = PRIORITY_WEIGHT[a.priority?.toLowerCase() || ''] || 0;
+          const weightB = PRIORITY_WEIGHT[b.priority?.toLowerCase() || ''] || 0;
+          if (weightB !== weightA) {
+            return weightB - weightA;
+          }
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        }
+        case 'updated':
+        default:
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }
+    });
+  }, [items, activeNotebookId, activeFilter, selectedType, selectedTag, searchQuery, showHiddenItems, notebooks, sortOption]);
 
   // Handlers for Items
   const handleItemSaved = (saved: Item) => {
@@ -533,6 +692,110 @@ export const App: React.FC = () => {
           closeConfirmModal();
         } catch (err) {
           console.error('Failed to delete item', err);
+          setConfirmModal((prev) => ({ ...prev, isLoading: false }));
+        }
+      }
+    });
+  };
+
+  const handleRestoreItem = async (item: Item) => {
+    try {
+      hapticSuccess();
+      const updated = await updateItem(item.id, { is_archived: 0 });
+      handleItemSaved(updated);
+    } catch (err) {
+      console.error('Failed to restore item', err);
+    }
+  };
+
+  const handleDuplicateItem = async (item: Item) => {
+    try {
+      hapticTap();
+      const tags = (item.tags || []).map((t) => (typeof t === 'string' ? t : t.name));
+      const payload: Partial<Item> = {
+        title: `${item.title} (Copy)`,
+        type: item.type,
+        content: item.content || '',
+        notebook_id: item.notebook_id || null,
+        metadata: item.metadata
+          ? (typeof item.metadata === 'string' ? JSON.parse(item.metadata) : { ...item.metadata })
+          : {},
+        priority: item.priority || '',
+        is_favorite: 0,
+        is_pinned: 0,
+        hide_from_all: item.hide_from_all ? 1 : 0,
+        tags
+      };
+
+      const duplicated = await createItem(payload as any);
+      hapticSuccess();
+      handleItemSaved(duplicated);
+    } catch (err) {
+      console.error('Failed to duplicate item', err);
+    }
+  };
+
+  const handleRepeatLog = (item: Item) => {
+    const tpl = templates.find((t) => t.id === item.metadata?.template_id);
+    if (tpl) {
+      setFormRunnerModal({
+        open: true,
+        template: tpl,
+        existingItem: item,
+        isRepeatLog: true
+      });
+    }
+  };
+
+  const handleEmptyTrash = () => {
+    const trashedCount = items.filter((i) => i.is_archived === 1).length;
+    if (trashedCount === 0) return;
+
+    setConfirmModal({
+      open: true,
+      title: 'Empty Trash Bin?',
+      message: `Permanently delete all ${trashedCount} item${trashedCount === 1 ? '' : 's'} in Trash? This action cannot be undone.`,
+      confirmText: 'Empty Trash',
+      confirmVariant: 'danger',
+      icon: 'trash',
+      onConfirm: async () => {
+        try {
+          setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+          await emptyTrash();
+          setItems((prev) => prev.filter((i) => !i.is_archived));
+          fetchNotebooks().then(setNotebooks);
+          closeConfirmModal();
+        } catch (err) {
+          console.error('Failed to empty trash', err);
+          setConfirmModal((prev) => ({ ...prev, isLoading: false }));
+        }
+      }
+    });
+  };
+
+  const handleRestoreAllTrash = () => {
+    const trashedCount = items.filter((i) => i.is_archived === 1).length;
+    if (trashedCount === 0) return;
+
+    setConfirmModal({
+      open: true,
+      title: 'Restore All Items?',
+      message: `Restore all ${trashedCount} item${trashedCount === 1 ? '' : 's'} from Trash back to your workspace?`,
+      confirmText: 'Restore All',
+      confirmVariant: 'primary',
+      icon: 'reset',
+      onConfirm: async () => {
+        try {
+          setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+          await restoreAllTrash();
+          const now = new Date().toISOString();
+          setItems((prev) =>
+            prev.map((i) => (i.is_archived ? { ...i, is_archived: 0, updated_at: now } : i))
+          );
+          fetchNotebooks().then(setNotebooks);
+          closeConfirmModal();
+        } catch (err) {
+          console.error('Failed to restore all trash', err);
           setConfirmModal((prev) => ({ ...prev, isLoading: false }));
         }
       }
@@ -584,6 +847,150 @@ export const App: React.FC = () => {
       console.error('Failed to toggle processed status', err);
       // Revert to original item on error
       handleItemSaved(item);
+    }
+  };
+
+  // Batch Operations Handlers
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAll = useCallback(() => {
+    const currentFilteredIds = filteredItems.map((i) => i.id);
+    setSelectedIds((prev) => {
+      const isAllSelected = currentFilteredIds.length > 0 && currentFilteredIds.every((id) => prev.has(id));
+      if (isAllSelected) {
+        return new Set();
+      }
+      return new Set(currentFilteredIds);
+    });
+  }, [filteredItems]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBatchTogglePin = async () => {
+    if (selectedIds.size === 0) return;
+    const selectedList = items.filter((i) => selectedIds.has(i.id));
+    const anyUnpinned = selectedList.some((i) => !i.is_pinned);
+    const nextPinned = anyUnpinned ? 1 : 0;
+    const ids = Array.from(selectedIds);
+
+    // Optimistic UI update
+    setItems((prev) =>
+      prev.map((i) => (selectedIds.has(i.id) ? { ...i, is_pinned: nextPinned } : i))
+    );
+
+    try {
+      await batchUpdateItems(ids, { is_pinned: nextPinned });
+    } catch (err) {
+      console.error('Failed to batch update pin status', err);
+      loadData();
+    }
+  };
+
+  const handleBatchToggleFavorite = async () => {
+    if (selectedIds.size === 0) return;
+    const selectedList = items.filter((i) => selectedIds.has(i.id));
+    const anyUnfavorited = selectedList.some((i) => !i.is_favorite);
+    const nextFav = anyUnfavorited ? 1 : 0;
+    const ids = Array.from(selectedIds);
+
+    // Optimistic UI update
+    setItems((prev) =>
+      prev.map((i) => (selectedIds.has(i.id) ? { ...i, is_favorite: nextFav } : i))
+    );
+
+    try {
+      await batchUpdateItems(ids, { is_favorite: nextFav });
+    } catch (err) {
+      console.error('Failed to batch update favorite status', err);
+      loadData();
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    const isTrash = activeFilter === 'trash';
+    const ids = Array.from(selectedIds);
+
+    setConfirmModal({
+      open: true,
+      title: isTrash ? `Permanently Delete ${count} Items?` : `Move ${count} Items to Trash?`,
+      message: isTrash
+        ? `This will permanently delete ${count} item${count === 1 ? '' : 's'} and any uploaded attachments. This action cannot be undone.`
+        : `These ${count} item${count === 1 ? '' : 's'} will be moved to the Trash bin. You can restore them anytime.`,
+      confirmText: isTrash ? 'Delete Permanently' : 'Move to Trash',
+      confirmVariant: 'danger',
+      icon: 'trash',
+      onConfirm: async () => {
+        try {
+          setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+          await batchDeleteItems(ids, isTrash);
+          if (isTrash) {
+            setItems((prev) => prev.filter((i) => !selectedIds.has(i.id)));
+          } else {
+            setItems((prev) =>
+              prev.map((i) => (selectedIds.has(i.id) ? { ...i, is_archived: 1 } : i))
+            );
+          }
+          setSelectedIds(new Set());
+          fetchNotebooks().then(setNotebooks);
+          closeConfirmModal();
+        } catch (err) {
+          console.error('Failed to batch delete items', err);
+          setConfirmModal((prev) => ({ ...prev, isLoading: false }));
+        }
+      }
+    });
+  };
+
+  const handleBatchMove = async (targetNotebookId: string | null) => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    const targetNb = notebooks.find((n) => n.id === targetNotebookId);
+
+    // Optimistic UI update
+    setItems((prev) =>
+      prev.map((i) =>
+        selectedIds.has(i.id)
+          ? {
+              ...i,
+              notebook_id: targetNotebookId,
+              notebook_name: targetNb?.name,
+              notebook_color: targetNb?.color
+            }
+          : i
+      )
+    );
+    setBatchMoveModalOpen(false);
+    setSelectedIds(new Set());
+
+    try {
+      await batchMoveItems(ids, targetNotebookId);
+      fetchNotebooks().then(setNotebooks);
+    } catch (err) {
+      console.error('Failed to batch move items', err);
+      loadData();
+    }
+  };
+
+  const handleBatchExport = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      await exportBatchNotes(Array.from(selectedIds));
+    } catch (err) {
+      console.error('Failed to export batch notes', err);
     }
   };
 
@@ -668,6 +1075,62 @@ export const App: React.FC = () => {
     }
   };
 
+  // Universal item opener for cards, list view, and command palette
+  const handleOpenItem = (it: Item) => {
+    if (activeFilter === 'trash') {
+      setMarkdownViewerModal({ open: true, item: it });
+    } else if (it.type === 'counter') {
+      setCounterModal({ open: true, item: it });
+    } else if (it.type === 'bookmark') {
+      setBookmarkModal({ open: true, item: it });
+    } else if (it.type === 'poster') {
+      setPosterModal({ open: true, item: it });
+    } else if (it.type === 'form_entry') {
+      const tpl = templates.find((t) => t.id === it.metadata?.template_id);
+      if (tpl) {
+        setFormRunnerModal({ open: true, template: tpl, existingItem: it });
+      } else {
+        setMarkdownViewerModal({ open: true, item: it });
+      }
+    } else {
+      setNoteModal({ open: true, item: it });
+    }
+  };
+
+  // Wikilink navigation handler (opens existing note or prompts creation of linked note)
+  const handleNavigateWikilink = (targetTitle: string) => {
+    const norm = normalizeLinkTitle(targetTitle);
+    const found = items.find(
+      (it) => it.type === 'note' && !it.is_archived && normalizeLinkTitle(it.title || '') === norm
+    );
+    if (found) {
+      if (activeFilter === 'trash' || Boolean(found.is_archived)) {
+        setMarkdownViewerModal({ open: true, item: found });
+      } else {
+        setNoteModal({ open: true, item: found });
+      }
+    } else {
+      setMarkdownViewerModal({ open: false, item: null });
+      setNoteModal({
+        open: true,
+        item: {
+          id: '',
+          title: targetTitle,
+          content: '',
+          type: 'note',
+          tags: [],
+          notebook_id: activeNotebookId,
+          priority: '',
+          is_favorite: 0,
+          is_pinned: 0,
+          hide_from_all: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        } as any
+      });
+    }
+  };
+
   // Quick Add Action from Navbar or Notebook
   const handleQuickAdd = () => {
     if (activeNotebook?.default_template_id) {
@@ -680,13 +1143,58 @@ export const App: React.FC = () => {
     setNoteModal({ open: true, item: null });
   };
 
+  // Desktop keyboard shortcuts (j/k navigate, Enter open, n/c/t quick-create, / search)
+  const itemListRef = useRef<HTMLDivElement>(null);
+  const anyOverlayOpen =
+    commandPaletteOpen ||
+    confirmModal.open ||
+    noteModal.open ||
+    markdownViewerModal.open ||
+    formRunnerModal.open ||
+    templateBuilderModal.open ||
+    bookmarkModal.open ||
+    counterModal.open ||
+    posterModal.open ||
+    notebookModal.open ||
+    timersModalOpen ||
+    settingsModalOpen ||
+    conflictModalOpen ||
+    mobileFabMenuOpen ||
+    mobileSidebarOpen;
+  useKeyboardShortcuts({
+    enabled: !anyOverlayOpen,
+    containerRef: itemListRef,
+    itemCount: viewMode === 'board' ? 0 : filteredItems.length,
+    onOpenIndex: (i) => {
+      const it = filteredItems[i];
+      if (it) handleOpenItem(it);
+    },
+    onNewNote: () => {
+      if (activeFilter !== 'trash') setNoteModal({ open: true, item: null });
+    },
+    onNewCounter: () => {
+      if (activeFilter !== 'trash') setCounterModal({ open: true, item: null });
+    },
+    onOpenTimers: () => setTimersModalOpen(true)
+  });
+
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-100 overflow-hidden font-sans selection:bg-brand-500 selection:text-white">
+      {/* Skip to Content for Screen Readers & Keyboard Navigation */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-brand-500 focus:text-white focus:rounded-xl focus:shadow-xl focus:outline-none focus:ring-2 focus:ring-white text-xs font-bold transition-all"
+      >
+        Skip to main content
+      </a>
+
       {/* Sidebar */}
       <Sidebar
         notebooks={notebooks}
         templates={templates}
         tags={tags}
+        selectedTag={selectedTag}
+        onSelectTag={setSelectedTag}
         activeNotebookId={activeNotebookId}
         activeFilter={activeFilter}
         onSelectFilter={setActiveFilter}
@@ -716,7 +1224,9 @@ export const App: React.FC = () => {
           selectedType={selectedType}
           onSelectType={setSelectedType}
           viewMode={viewMode}
-          onViewModeChange={setViewMode}
+          onViewModeChange={handleViewModeChange}
+          density={density}
+          onDensityChange={handleDensityChange}
           activeNotebook={activeNotebook}
           isExpandedAll={expandAllCards}
           onToggleExpandAll={() => setExpandAllCards((prev) => !prev)}
@@ -729,6 +1239,11 @@ export const App: React.FC = () => {
           }
           backLabel={parentNotebook ? parentNotebook.name : 'All Notes'}
           onOpenSettings={() => setSettingsModalOpen(true)}
+          sortOption={sortOption}
+          onSortOptionChange={handleSortOptionChange}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          selectedTag={selectedTag}
+          onSelectTag={setSelectedTag}
         />
 
         {/* Offline Banner when server connection is lost */}
@@ -753,7 +1268,7 @@ export const App: React.FC = () => {
         )}
 
         {/* Views */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-32 sm:pb-10 lg:pb-6">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-32 sm:pb-10 lg:pb-6 focus:outline-none">
           {activeFilter === 'templates' ? (
             <TemplatesView
               templates={templates}
@@ -867,6 +1382,49 @@ export const App: React.FC = () => {
                 </div>
               )}
 
+              {/* Trash Mode Banner */}
+              {activeFilter === 'trash' && (
+                <div className="mb-4 p-4 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
+                      <Trash2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+                        <span>Trash Bin</span>
+                        <span className="text-xs font-mono text-zinc-400 font-normal">
+                          ({filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'})
+                        </span>
+                      </h2>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        Items in trash are kept until emptied or restored.
+                      </p>
+                    </div>
+                  </div>
+
+                  {filteredItems.length > 0 && (
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={handleRestoreAllTrash}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition touch-manipulation active:scale-95"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Restore All</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleEmptyTrash}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 rounded-xl text-xs font-semibold transition touch-manipulation active:scale-95"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        <span>Empty Trash</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Hidden Items Indicator / Toggle in All Items view */}
               {!activeNotebookId && activeFilter === 'all' && hiddenItemsCount > 0 && (
                 <div className="flex items-center justify-between mb-4 px-1">
@@ -892,87 +1450,119 @@ export const App: React.FC = () => {
                   <p className="text-xs text-zinc-400 font-medium">Loading your notes...</p>
                 </div>
               ) : filteredItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto my-12 border-2 border-dashed border-zinc-800/80 rounded-3xl bg-zinc-900/30">
-                  <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 mb-4 shadow-xl">
-                    <Sparkles className="w-7 h-7 text-brand-400" />
+                activeFilter === 'trash' ? (
+                  <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto my-12 border-2 border-dashed border-zinc-800/80 rounded-3xl bg-zinc-900/30">
+                    <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 mb-4 shadow-xl">
+                      <Trash2 className="w-7 h-7 text-zinc-500" />
+                    </div>
+                    <h3 className="text-lg font-bold text-zinc-100">Trash is empty</h3>
+                    <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                      Items you delete will be moved here. You can view or restore them anytime.
+                    </p>
                   </div>
-                  <h3 className="text-lg font-bold text-zinc-100">No items found</h3>
-                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
-                    Start filling this notebook with markdown notes, quick counters, bookmarks, or structured form entries.
-                  </p>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto my-12 border-2 border-dashed border-zinc-800/80 rounded-3xl bg-zinc-900/30">
+                    <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 mb-4 shadow-xl">
+                      <Sparkles className="w-7 h-7 text-brand-400" />
+                    </div>
+                    <h3 className="text-lg font-bold text-zinc-100">No items found</h3>
+                    <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                      Start filling this notebook with markdown notes, quick counters, bookmarks, or structured form entries.
+                    </p>
 
-                  <div className="mt-6 flex flex-wrap gap-2 justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setNoteModal({ open: true, item: null })}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-brand-400" />
-                      <span>Note</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCounterModal({ open: true, item: null })}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
-                    >
-                      <Hash className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Counter</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBookmarkModal({ open: true, item: null })}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
-                    >
-                      <Bookmark className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Bookmark</span>
-                    </button>
-                    {templates.length > 0 && (
+                    <div className="mt-6 flex flex-wrap gap-2 justify-center">
                       <button
                         type="button"
-                        onClick={() => setFormRunnerModal({ open: true, template: templates[0] })}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-brand-500/20"
+                        onClick={() => setNoteModal({ open: true, item: null })}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
                       >
-                        <ClipboardList className="w-3.5 h-3.5" />
-                        <span>Fill Form</span>
+                        <FileText className="w-3.5 h-3.5 text-brand-400" />
+                        <span>Note</span>
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => setCounterModal({ open: true, item: null })}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
+                      >
+                        <Hash className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Counter</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBookmarkModal({ open: true, item: null })}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
+                      >
+                        <Bookmark className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Bookmark</span>
+                      </button>
+                      {templates.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setFormRunnerModal({ open: true, template: templates[0] })}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-brand-500/20"
+                        >
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          <span>Fill Form</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )
+              ) : viewMode === 'board' ? (
+                <KanbanView
+                  items={filteredItems}
+                  priorities={settings.priorities}
+                  templates={templates}
+                  onOpenItem={handleOpenItem}
+                  onUpdateItem={handleItemSaved}
+                  onToggleFavorite={handleToggleFavorite}
+                  onTogglePin={handleTogglePin}
+                  onDelete={handleDeleteItem}
+                  onRestore={handleRestoreItem}
+                  onDuplicate={handleDuplicateItem}
+                  onSelectTag={setSelectedTag}
+                  isTrashMode={activeFilter === 'trash'}
+                  selectedIds={selectedIds}
+                  isSelectMode={selectedIds.size > 0}
+                  onToggleSelect={handleToggleSelect}
+                />
               ) : (
                 <div
+                  ref={itemListRef}
                   className={
                     viewMode === 'grid'
-                      ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
+                      ? density === 'compact'
+                        ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3'
+                        : density === 'comfortable'
+                          ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 sm:gap-4'
+                          : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6'
                       : 'flex flex-col space-y-2'
                   }
                 >
                   {filteredItems.map((item) => {
+                    const isSelected = selectedIds.has(item.id);
+                    const isSelectMode = selectedIds.size > 0;
+
                     if (viewMode === 'list') {
                       return (
                         <ItemListItem
                           key={item.id}
                           item={item}
+                          density={density}
                           priorities={settings.priorities}
-                          onOpen={(it) => {
-                            if (it.type === 'counter') setCounterModal({ open: true, item: it });
-                            else if (it.type === 'bookmark') setBookmarkModal({ open: true, item: it });
-                            else if (it.type === 'poster') setPosterModal({ open: true, item: it });
-                            else if (it.type === 'form_entry') {
-                              const tpl = templates.find((t) => t.id === it.metadata?.template_id);
-                              if (tpl) {
-                                setFormRunnerModal({ open: true, template: tpl, existingItem: it });
-                              } else {
-                                setMarkdownViewerModal({ open: true, item: it });
-                              }
-                            } else {
-                              setNoteModal({ open: true, item: it });
-                            }
-                          }}
+                          isTrashMode={activeFilter === 'trash'}
+                          onOpen={handleOpenItem}
                           onUpdate={handleItemSaved}
                           onToggleFavorite={handleToggleFavorite}
                           onTogglePin={handleTogglePin}
                           onToggleProcessed={handleToggleProcessed}
                           onDelete={handleDeleteItem}
+                          onRestore={handleRestoreItem}
+                          onDuplicate={handleDuplicateItem}
+                          onSelectTag={setSelectedTag}
+                          isSelected={isSelected}
+                          isSelectMode={isSelectMode}
+                          onToggleSelect={handleToggleSelect}
                         />
                       );
                     }
@@ -983,9 +1573,16 @@ export const App: React.FC = () => {
                           <CounterCard
                             key={item.id}
                             item={item}
+                            density={density}
+                            isTrashMode={activeFilter === 'trash'}
                             onUpdate={handleItemSaved}
                             onDelete={handleDeleteItem}
                             onEdit={(it) => setCounterModal({ open: true, item: it })}
+                            onRestore={handleRestoreItem}
+                            onDuplicate={handleDuplicateItem}
+                            isSelected={isSelected}
+                            isSelectMode={isSelectMode}
+                            onToggleSelect={handleToggleSelect}
                           />
                         );
                       case 'bookmark':
@@ -993,9 +1590,16 @@ export const App: React.FC = () => {
                           <BookmarkCard
                             key={item.id}
                             item={item}
+                            density={density}
+                            isTrashMode={activeFilter === 'trash'}
                             onUpdate={handleItemSaved}
                             onDelete={handleDeleteItem}
                             onEdit={(it) => setBookmarkModal({ open: true, item: it })}
+                            onRestore={handleRestoreItem}
+                            onDuplicate={handleDuplicateItem}
+                            isSelected={isSelected}
+                            isSelectMode={isSelectMode}
+                            onToggleSelect={handleToggleSelect}
                           />
                         );
                       case 'poster':
@@ -1003,9 +1607,16 @@ export const App: React.FC = () => {
                           <PosterCard
                             key={item.id}
                             item={item}
+                            density={density}
+                            isTrashMode={activeFilter === 'trash'}
                             onUpdate={handleItemSaved}
                             onDelete={handleDeleteItem}
                             onEdit={(it) => setPosterModal({ open: true, item: it })}
+                            onRestore={handleRestoreItem}
+                            onDuplicate={handleDuplicateItem}
+                            isSelected={isSelected}
+                            isSelectMode={isSelectMode}
+                            onToggleSelect={handleToggleSelect}
                           />
                         );
                       case 'form_entry':
@@ -1013,8 +1624,10 @@ export const App: React.FC = () => {
                           <FormEntryCard
                             key={item.id}
                             item={item}
+                            density={density}
                             template={templates.find((t) => t.id === item.metadata?.template_id)}
                             isExpanded={expandAllCards}
+                            isTrashMode={activeFilter === 'trash'}
                             onOpenForm={(it) => {
                               const tpl = templates.find((t) => t.id === item.metadata?.template_id);
                               if (tpl) {
@@ -1026,6 +1639,12 @@ export const App: React.FC = () => {
                             onTogglePin={handleTogglePin}
                             onToggleProcessed={handleToggleProcessed}
                             onDelete={handleDeleteItem}
+                            onRestore={handleRestoreItem}
+                            onDuplicate={handleDuplicateItem}
+                            onRepeatLog={handleRepeatLog}
+                            isSelected={isSelected}
+                            isSelectMode={isSelectMode}
+                            onToggleSelect={handleToggleSelect}
                           />
                         );
                       case 'note':
@@ -1034,13 +1653,28 @@ export const App: React.FC = () => {
                           <NoteCard
                             key={item.id}
                             item={item}
+                            density={density}
                             priorities={settings.priorities}
                             isExpanded={expandAllCards}
-                            onOpen={(it) => setNoteModal({ open: true, item: it })}
+                            isTrashMode={activeFilter === 'trash'}
+                            onOpen={(it) => {
+                              if (activeFilter === 'trash') {
+                                setMarkdownViewerModal({ open: true, item: it });
+                              } else {
+                                setNoteModal({ open: true, item: it });
+                              }
+                            }}
                             onUpdate={handleItemSaved}
                             onToggleFavorite={handleToggleFavorite}
                             onTogglePin={handleTogglePin}
                             onDelete={handleDeleteItem}
+                            onRestore={handleRestoreItem}
+                            onDuplicate={handleDuplicateItem}
+                            onSelectTag={setSelectedTag}
+                            onNavigateWikilink={handleNavigateWikilink}
+                            isSelected={isSelected}
+                            isSelectMode={isSelectMode}
+                            onToggleSelect={handleToggleSelect}
                           />
                         );
                     }
@@ -1097,30 +1731,32 @@ export const App: React.FC = () => {
             <span className={`text-[10px] font-semibold leading-none ${activeNotebookId !== null ? 'font-bold' : ''}`}>Notebooks</span>
           </button>
 
-          {/* Tab 3: Center Elevated FAB */}
-          <div className="relative flex flex-col items-center justify-end pb-0.5" style={{ marginTop: '-1.25rem' }}>
-            <button
-              type="button"
-              onClick={() => {
-                hapticMedium();
-                if (activeNotebook?.default_template_id) {
-                  const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
-                  if (tpl) {
-                    setFormRunnerModal({ open: true, template: tpl });
-                    return;
+          {/* Tab 3: Center Elevated FAB (hidden in trash view) */}
+          <div className="relative flex flex-col items-center justify-end pb-0.5 min-w-[56px]" style={{ marginTop: '-1.25rem' }}>
+            {activeFilter !== 'trash' && (
+              <button
+                type="button"
+                onClick={() => {
+                  hapticMedium();
+                  if (activeNotebook?.default_template_id) {
+                    const tpl = templates.find((t) => t.id === activeNotebook.default_template_id);
+                    if (tpl) {
+                      setFormRunnerModal({ open: true, template: tpl });
+                      return;
+                    }
                   }
-                }
-                setMobileFabMenuOpen(!mobileFabMenuOpen);
-              }}
-              className="h-14 w-14 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center shadow-xl shadow-brand-500/40 active:scale-95 transition-all touch-manipulation ring-4 ring-zinc-950"
-              aria-label="New Item"
-            >
-              <Plus
-                className={`w-7 h-7 stroke-[2.5] transition-transform duration-200 ${
-                  mobileFabMenuOpen ? 'rotate-45' : ''
-                }`}
-              />
-            </button>
+                  setMobileFabMenuOpen(!mobileFabMenuOpen);
+                }}
+                className="h-14 w-14 rounded-full bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center shadow-xl shadow-brand-500/40 active:scale-95 transition-all touch-manipulation ring-4 ring-zinc-950"
+                aria-label="New Item"
+              >
+                <Plus
+                  className={`w-7 h-7 stroke-[2.5] transition-transform duration-200 ${
+                    mobileFabMenuOpen ? 'rotate-45' : ''
+                  }`}
+                />
+              </button>
+            )}
           </div>
 
           {/* Tab 4: Form Templates */}
@@ -1343,8 +1979,12 @@ export const App: React.FC = () => {
           notebooks={notebooks}
           defaultNotebookId={activeNotebookId}
           priorities={settings.priorities}
+          items={items}
+          tags={tags}
           onClose={() => setNoteModal({ open: false, item: null })}
           onSaved={handleItemSaved}
+          onNavigateWikilink={handleNavigateWikilink}
+          onNavigateItem={handleOpenItem}
         />
       )}
 
@@ -1395,7 +2035,8 @@ export const App: React.FC = () => {
           notebooks={notebooks}
           defaultNotebookId={activeNotebookId}
           existingItem={formRunnerModal.existingItem}
-          onClose={() => setFormRunnerModal({ open: false, template: null, existingItem: null })}
+          isRepeatLog={formRunnerModal.isRepeatLog}
+          onClose={() => setFormRunnerModal({ open: false, template: null, existingItem: null, isRepeatLog: false })}
           onSaved={handleItemSaved}
         />
       )}
@@ -1422,7 +2063,12 @@ export const App: React.FC = () => {
       {markdownViewerModal.open && markdownViewerModal.item && (
         <MarkdownViewerModal
           item={markdownViewerModal.item}
+          items={items}
+          isTrashMode={activeFilter === 'trash'}
+          onRestore={handleRestoreItem}
           onClose={() => setMarkdownViewerModal({ open: false, item: null })}
+          onNavigateWikilink={handleNavigateWikilink}
+          onNavigateItem={handleOpenItem}
           onEdit={(it) => {
             setMarkdownViewerModal({ open: false, item: null });
             if (it.type === 'form_entry') {
@@ -1468,8 +2114,12 @@ export const App: React.FC = () => {
         onClose={() => setSettingsModalOpen(false)}
         currentTheme={settings.theme}
         onThemeChange={handleThemeChange}
+        currentAccent={settings.accent_color || 'emerald'}
+        onAccentChange={handleAccentColorChange}
         priorities={settings.priorities}
         onPrioritiesChange={handlePrioritiesChange}
+        currentDensity={density}
+        onDensityChange={handleDensityChange}
       />
 
       {/* Sync & Merge Conflict Resolver Modal */}
@@ -1490,6 +2140,65 @@ export const App: React.FC = () => {
       <ManageUsersModal
         isOpen={manageUsersModalOpen}
         onClose={() => setManageUsersModalOpen(false)}
+      />
+
+      {/* Bulk Action Toolbar */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        totalCount={filteredItems.length}
+        isAllSelected={filteredItems.length > 0 && filteredItems.every((it) => selectedIds.has(it.id))}
+        onToggleSelectAll={handleToggleSelectAll}
+        onOpenMoveModal={() => setBatchMoveModalOpen(true)}
+        onBatchTogglePin={handleBatchTogglePin}
+        onBatchToggleFavorite={handleBatchToggleFavorite}
+        onBatchExport={handleBatchExport}
+        onBatchDelete={handleBatchDelete}
+        onClearSelection={handleClearSelection}
+        isTrashMode={activeFilter === 'trash'}
+      />
+
+      {/* Batch Move Modal */}
+      <BatchMoveModal
+        isOpen={batchMoveModalOpen}
+        onClose={() => setBatchMoveModalOpen(false)}
+        selectedCount={selectedIds.size}
+        notebooks={notebooks}
+        onMoveToNotebook={handleBatchMove}
+      />
+
+      {/* Omni-Command Palette (Cmd+K / Ctrl+K) */}
+      <CommandPaletteModal
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        items={items}
+        notebooks={notebooks}
+        tags={tags}
+        templates={templates}
+        onSelectItem={handleOpenItem}
+        onSelectNotebook={(nbId) => {
+          setActiveNotebookId(nbId);
+          setActiveFilter('all');
+        }}
+        onSelectTag={(tagName) => {
+          setSearchQuery(tagName);
+          setActiveFilter('all');
+        }}
+        onNewNote={() => setNoteModal({ open: true, item: null })}
+        onNewCounter={() => setCounterModal({ open: true, item: null })}
+        onNewBookmark={() => setBookmarkModal({ open: true, item: null })}
+        onNewPoster={() => setPosterModal({ open: true, item: null })}
+        onOpenTemplateRunner={(tpl) => setFormRunnerModal({ open: true, template: tpl, existingItem: null })}
+        onNewNotebook={() => setNotebookModal({ open: true, notebook: null, defaultParentId: activeNotebookId })}
+        onOpenTimers={() => setTimersModalOpen(true)}
+        onOpenSettings={() => setSettingsModalOpen(true)}
+        onToggleTheme={() => {
+          const next = settings.theme === 'dark' ? 'light' : 'dark';
+          handleThemeChange(next);
+        }}
+        onManualSync={() => {
+          loadData();
+          refreshConflicts();
+        }}
       />
     </div>
   );

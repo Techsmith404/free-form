@@ -9,13 +9,26 @@
   --color-zinc-200: 39 39 42;     /* Subtitles (#27272a) */
   --color-zinc-300: 71 85 105;    /* Muted content (#475569) */
   --color-zinc-400: 100 116 139;  /* Secondary / labels (#64748b) */
-  --color-zinc-500: 148 163 184;  /* Inactive icon / placeholder */
+  --color-zinc-500: 71 85 105;    /* WCAG AAA compliant muted text / labels */
   --color-zinc-600: 203 213 225;  /* Subtle divider */
   --color-zinc-700: 226 232 240;  /* Standard border (#e2e8f0) */
   --color-zinc-800: 241 245 249;  /* Elevated chip / input bg (#f1f5f9) */
   --color-zinc-900: 255 255 255;  /* Card & Modal surface (#ffffff) */
   --color-zinc-950: 248 250 252;  /* App background (#f8fafc) */
   color-scheme: light;
+
+  /* Default Brand Accent: Emerald */
+  --color-brand-50: 240 253 244;
+  --color-brand-100: 220 252 231;
+  --color-brand-200: 187 247 208;
+  --color-brand-300: 134 239 172;
+  --color-brand-400: 74 222 128;
+  --color-brand-500: 34 197 94;
+  --color-brand-600: 22 163 74;
+  --color-brand-700: 21 128 61;
+  --color-brand-800: 22 101 52;
+  --color-brand-900: 20 83 45;
+  --color-brand-950: 5 46 22;
 }
 
 html.dark {
@@ -32,6 +45,113 @@ html.dark {
   --color-zinc-900: 24 24 27;
   --color-zinc-950: 9 9 11;
   color-scheme: dark;
+}
+
+html.oled {
+  /* OLED Pitch Black Palette (#000000) */
+  --color-zinc-50: 250 250 250;
+  --color-zinc-100: 244 244 245;
+  --color-zinc-200: 228 228 231;
+  --color-zinc-300: 212 212 216;
+  --color-zinc-400: 161 161 170;
+  --color-zinc-500: 113 113 122;
+  --color-zinc-600: 45 45 48;
+  --color-zinc-700: 34 34 38;
+  --color-zinc-800: 24 24 27;
+  --color-zinc-900: 14 14 16;
+  --color-zinc-950: 0 0 0;
+  color-scheme: dark;
+}
+
+/* Curated Accent Color Overrides */
+html[data-accent="violet"] {
+  --color-brand-50: 245 243 255;
+  --color-brand-100: 237 233 254;
+  --color-brand-200: 221 214 254;
+  --color-brand-300: 196 181 253;
+  --color-brand-400: 167 139 250;
+  --color-brand-500: 139 92 246;
+  --color-brand-600: 124 58 237;
+  --color-brand-700: 109 40 217;
+  --color-brand-800: 91 33 182;
+  --color-brand-900: 76 29 149;
+  --color-brand-950: 46 16 101;
+}
+
+html[data-accent="cyan"] {
+  --color-brand-50: 236 254 255;
+  --color-brand-100: 207 250 254;
+  --color-brand-200: 165 243 252;
+  --color-brand-300: 103 232 249;
+  --color-brand-400: 34 211 238;
+  --color-brand-500: 6 182 212;
+  --color-brand-600: 8 145 178;
+  --color-brand-700: 14 116 144;
+  --color-brand-800: 21 94 117;
+  --color-brand-900: 22 78 99;
+  --color-brand-950: 8 51 68;
+}
+
+html[data-accent="rose"] {
+  --color-brand-50: 255 241 242;
+  --color-brand-100: 255 228 230;
+  --color-brand-200: 254 205 211;
+  --color-brand-300: 253 164 175;
+  --color-brand-400: 251 113 133;
+  --color-brand-500: 244 63 94;
+  --color-brand-600: 225 29 72;
+  --color-brand-700: 190 18 60;
+  --color-brand-800: 159 18 57;
+  --color-brand-900: 136 19 55;
+  --color-brand-950: 76 5 25;
+}
+
+html[data-accent="amber"] {
+  --color-brand-50: 255 251 235;
+  --color-brand-100: 254 243 199;
+  --color-brand-200: 253 230 138;
+  --color-brand-300: 252 211 77;
+  --color-brand-400: 251 191 36;
+  --color-brand-500: 245 158 11;
+  --color-brand-600: 217 119 6;
+  --color-brand-700: 180 83 9;
+  --color-brand-800: 146 64 14;
+  --color-brand-900: 120 53 15;
+  --color-brand-950: 69 26 3;
+}
+
+html[data-accent="blue"] {
+  --color-brand-50: 239 246 255;
+  --color-brand-100: 219 234 254;
+  --color-brand-200: 191 219 254;
+  --color-brand-300: 147 197 253;
+  --color-brand-400: 96 165 250;
+  --color-brand-500: 59 130 246;
+  --color-brand-600: 37 99 235;
+  --color-brand-700: 29 78 216;
+  --color-brand-800: 30 64 175;
+  --color-brand-900: 30 58 138;
+  --color-brand-950: 23 37 84;
+}
+
+html[data-accent="emerald"] {
+  --color-brand-50: 240 253 244;
+  --color-brand-100: 220 252 231;
+  --color-brand-200: 187 247 208;
+  --color-brand-300: 134 239 172;
+  --color-brand-400: 74 222 128;
+  --color-brand-500: 34 197 94;
+  --color-brand-600: 22 163 74;
+  --color-brand-700: 21 128 61;
+  --color-brand-800: 22 101 52;
+  --color-brand-900: 20 83 45;
+  --color-brand-950: 5 46 22;
+}
+
+/* Global accessible focus-visible ring */
+:focus-visible {
+  outline: 2px solid rgb(var(--color-brand-500));
+  outline-offset: 2px;
 }
 
 @layer base {
@@ -74,6 +194,11 @@ html.dark {
   /* Active scale feedback for touch */
   .active-scale {
     @apply active:scale-95 transition-transform;
+  }
+
+  /* Full-text search snippet highlight */
+  mark.ff-search-hl {
+    @apply bg-brand-500/30 text-brand-300 font-semibold px-1 py-0.5 rounded border border-brand-500/40;
   }
 }
 
@@ -475,3 +600,52 @@ html.dark {
   margin: 0.35rem 0;
 }
 
+@keyframes num-bounce {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-num-bounce {
+  animation: num-bounce 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+
+/* Keyboard (j/k) navigation focus indicator */
+.ff-kb-focus {
+  outline: 2px solid rgb(var(--color-brand-500));
+  outline-offset: 2px;
+  border-radius: 1rem;
+}
+
+/* Global focus-visible ring */
+:focus-visible {
+  outline: 2px solid rgb(var(--color-brand-500));
+  outline-offset: 2px;
+}
+
+/* Wikilink [[Note Title]] clickable tags */
+.wikilink {
+  color: rgb(var(--color-brand-400));
+  text-decoration: underline;
+  text-decoration-color: rgb(var(--color-brand-500) / 0.4);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 150ms ease;
+  display: inline-block;
+  padding: 0 1px;
+}
+
+.wikilink:hover {
+  color: rgb(var(--color-brand-300));
+  text-decoration-color: rgb(var(--color-brand-400));
+  background-color: rgb(var(--color-brand-500) / 0.15);
+  border-radius: 4px;
+}

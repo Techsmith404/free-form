@@ -9,7 +9,13 @@ export const AlarmAlertModal: React.FC = () => {
   if (!ringingTimer && !triggeredReminder) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)] bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="alarm-alert-title"
+      aria-describedby="alarm-alert-desc"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)] bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+    >
       <div className="relative w-full max-w-md bg-zinc-900 border-2 border-red-500 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-red-500/20 text-center animate-bounce-subtle">
         {/* Pulsing Alarm Icon */}
         <div className="mx-auto w-20 h-20 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center mb-5 animate-pulse">
@@ -25,10 +31,10 @@ export const AlarmAlertModal: React.FC = () => {
         {/* Title & Info */}
         {ringingTimer && (
           <div className="space-y-2 mb-6">
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            <h2 id="alarm-alert-title" className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               Timer Finished!
             </h2>
-            <p className="text-lg font-medium text-zinc-300">
+            <p id="alarm-alert-desc" className="text-lg font-medium text-zinc-300">
               "{ringingTimer.title}"
             </p>
             <p className="text-xs text-zinc-500">
@@ -39,10 +45,10 @@ export const AlarmAlertModal: React.FC = () => {
 
         {triggeredReminder && (
           <div className="space-y-2 mb-6">
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            <h2 id="alarm-alert-title" className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               Reminder Due!
             </h2>
-            <p className="text-lg font-medium text-zinc-300">
+            <p id="alarm-alert-desc" className="text-lg font-medium text-zinc-300">
               "{triggeredReminder.title}"
             </p>
             {triggeredReminder.notes && (

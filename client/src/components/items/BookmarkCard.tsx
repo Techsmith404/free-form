@@ -1,27 +1,80 @@
 import React from 'react';
-import { Item, BookmarkMetadata } from '../../types/index.js';
-import { ExternalLink, Globe, Trash2, Edit2, Bookmark, EyeOff } from 'lucide-react';
-import { hapticTap } from '../../services/native.js';
+import { Item, BookmarkMetadata, DensityMode } from '../../types/index.js';
+import { ExternalLink, Globe, Trash2, Edit2, Bookmark, EyeOff, RotateCcw, Check, Copy } from 'lucide-react';
+import { hapticSuccess, hapticTap } from '../../services/native.js';
 
 interface BookmarkCardProps {
   item: Item;
+  density?: DensityMode;
+  isTrashMode?: boolean;
   onUpdate: (updated: Item) => void;
   onDelete: (id: string) => void;
   onEdit?: (item: Item) => void;
+  onRestore?: (item: Item) => void;
+  onDuplicate?: (item: Item) => void;
+  isSelected?: boolean;
+  isSelectMode?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 export const BookmarkCard: React.FC<BookmarkCardProps> = ({
   item,
+  density = 'cozy',
+  isTrashMode = false,
   onDelete,
-  onEdit
+  onEdit,
+  onRestore,
+  onDuplicate,
+  isSelected = false,
+  isSelectMode = false,
+  onToggleSelect
 }) => {
+  const isTrash = isTrashMode || Boolean(item.is_archived);
   const meta: BookmarkMetadata = item.metadata || { url: '#' };
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (isSelectMode || e.metaKey || e.ctrlKey || e.shiftKey) {
+      e.stopPropagation();
+      hapticTap();
+      onToggleSelect?.(item.id);
+    }
+  };
+
+  const paddingClass = density === 'compact'
+    ? 'p-3 space-y-2'
+    : density === 'comfortable'
+      ? 'p-4 space-y-3'
+      : 'p-5 space-y-4';
+
+  const imageHeightClass = density === 'compact'
+    ? 'h-28'
+    : density === 'comfortable'
+      ? 'h-36'
+      : 'h-44';
+
   return (
-    <div className="flex flex-col justify-between rounded-2xl bg-zinc-900/95 border border-zinc-800 hover:border-zinc-700/80 transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 overflow-hidden group">
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open bookmark: ${item.title}`}
+      onClick={handleCardClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.target === e.currentTarget) {
+            e.preventDefault();
+            handleCardClick(e as any);
+          }
+        }
+      }}
+      className={`flex flex-col justify-between rounded-2xl bg-zinc-900/95 border transition-all duration-200 shadow-md shadow-black/30 overflow-hidden group cursor-pointer focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none ${
+        isSelected
+          ? 'border-brand-500 ring-2 ring-brand-500/40 bg-brand-500/5'
+          : 'border-zinc-800 hover:border-zinc-700/80 ring-1 ring-white/5'
+      }`}
+    >
       {/* Cover Image */}
       {meta.ogImage ? (
-        <div className="relative w-full h-44 bg-zinc-950 overflow-hidden border-b border-zinc-800">
+        <div className={`relative w-full ${imageHeightClass} bg-zinc-950 overflow-hidden border-b border-zinc-800`}>
           <img
             src={meta.ogImage}
             alt={item.title}
@@ -39,11 +92,29 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
       )}
 
       {/* Card Content */}
-      <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+      <div className={`${paddingClass} flex-1 flex flex-col justify-between`}>
         <div>
           {/* Site Badge */}
           <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
             <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+              {isSelectMode && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    hapticTap();
+                    onToggleSelect?.(item.id);
+                  }}
+                  className={`w-5 h-5 rounded-md flex items-center justify-center border transition touch-manipulation shrink-0 ${
+                    isSelected
+                      ? 'bg-brand-500 border-brand-500 text-white shadow-sm'
+                      : 'bg-zinc-800 border-zinc-600 text-transparent hover:border-zinc-400'
+                  }`}
+                  title={isSelected ? 'Deselect' : 'Select'}
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                </button>
+              )}
               {meta.favicon ? (
                 <img src={meta.favicon} alt="" className="w-4 h-4 rounded-sm shrink-0" />
               ) : (
@@ -96,17 +167,48 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
           </a>
 
           <div className="flex items-center gap-1 sm:ml-auto">
-            {onEdit && (
+            {isTrash ? (
               <button
                 type="button"
                 onClick={() => {
-                  hapticTap();
-                  onEdit(item);
+                  hapticSuccess();
+                  if (onRestore) onRestore(item);
                 }}
-                className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
-                title="Edit Bookmark"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition touch-manipulation"
+                title="Restore from Trash"
+                aria-label="Restore bookmark"
               >
-                <Edit2 className="w-4 h-4" />
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            ) : (
+              onEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticTap();
+                    onEdit(item);
+                  }}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
+                  title="Edit Bookmark"
+                  aria-label="Edit bookmark"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              )
+            )}
+            {onDuplicate && !isTrash && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  hapticTap();
+                  onDuplicate(item);
+                }}
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition touch-manipulation"
+                title="Duplicate Bookmark"
+                aria-label="Duplicate bookmark"
+              >
+                <Copy className="w-4 h-4" />
               </button>
             )}
             <button
@@ -115,8 +217,9 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
                 hapticTap();
                 onDelete(item.id);
               }}
-              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
-              title="Delete"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
+              title={isTrash ? 'Permanently Delete' : 'Delete'}
+              aria-label={isTrash ? 'Permanently Delete' : 'Delete bookmark'}
             >
               <Trash2 className="w-4 h-4" />
             </button>

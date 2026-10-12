@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { ConflictRecord, Item } from '../types/index.js';
 import { broadcast } from '../services/realtime.js';
 import crypto from 'crypto';
+import { refreshItemLinks } from '../services/links.js';
 
 export const conflictsRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/conflicts - List all unresolved conflicts
@@ -75,6 +76,7 @@ export const conflictsRoutes: FastifyPluginAsync = async (fastify) => {
             now,
             now
           );
+          refreshItemLinks(newId);
         } else if (action === 'custom_merge') {
           db.prepare(`
             UPDATE items
@@ -89,6 +91,8 @@ export const conflictsRoutes: FastifyPluginAsync = async (fastify) => {
           );
         }
       }
+
+      refreshItemLinks(conflictRow.item_id);
 
       // Mark conflict resolved
       db.prepare(`

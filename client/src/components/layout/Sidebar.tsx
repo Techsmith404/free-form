@@ -36,6 +36,8 @@ interface SidebarProps {
   notebooks: Notebook[];
   templates: FormTemplate[];
   tags: Tag[];
+  selectedTag?: string | null;
+  onSelectTag?: (tag: string | null) => void;
   activeNotebookId: string | null;
   activeFilter: 'all' | 'favorites' | 'templates' | 'trash';
   onSelectFilter: (filter: 'all' | 'favorites' | 'templates' | 'trash') => void;
@@ -59,6 +61,9 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   notebooks,
   templates,
+  tags,
+  selectedTag,
+  onSelectTag,
   activeNotebookId,
   activeFilter,
   onSelectFilter,
@@ -80,6 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { user, logout } = useAuth();
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [expandedNotebooks, setExpandedNotebooks] = useState<Record<string, boolean>>({});
+  const [tagsExpanded, setTagsExpanded] = useState(true);
   const { timers, reminders, conflicts, setTimersModalOpen, setConflictModalOpen } = useRealtime();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -494,6 +500,95 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 })()
               )}
             </div>
+          </div>
+
+          {/* Tags Section */}
+          <div className="space-y-2 pt-2 border-t border-zinc-800/60">
+            <div className="flex items-center justify-between px-3 text-xs font-bold uppercase tracking-wider text-zinc-400">
+              <button
+                type="button"
+                onClick={() => setTagsExpanded(!tagsExpanded)}
+                className="flex items-center gap-1.5 hover:text-white transition touch-manipulation text-left"
+              >
+                {tagsExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+                <span>Tags</span>
+              </button>
+              {tags.length > 0 && (
+                <span className="text-[11px] font-mono font-medium text-zinc-500">
+                  {tags.length}
+                </span>
+              )}
+            </div>
+
+            {tagsExpanded && (
+              <div className="space-y-0.5 text-sm font-medium">
+                {tags.length === 0 ? (
+                  <div className="px-3 py-2 text-zinc-500 italic text-xs">No tags yet</div>
+                ) : (
+                  <>
+                    {selectedTag && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hapticTap();
+                          onSelectTag?.(null);
+                        }}
+                        className="w-full h-9 flex items-center justify-between px-3 rounded-xl text-xs font-semibold text-brand-400 hover:bg-zinc-900 transition touch-manipulation mb-1"
+                      >
+                        <span>Clear Tag Filter</span>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {tags.map((t) => {
+                      const isTagActive = selectedTag?.toLowerCase() === t.name.toLowerCase();
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => {
+                            hapticTap();
+                            if (isTagActive) {
+                              onSelectTag?.(null);
+                            } else {
+                              onSelectTag?.(t.name);
+                            }
+                            onCloseMobile();
+                          }}
+                          className={`w-full h-10 flex items-center justify-between px-3 rounded-xl text-xs transition touch-manipulation min-h-[40px] ${
+                            isTagActive
+                              ? 'bg-brand-500/15 text-brand-300 font-bold border border-brand-500/30'
+                              : 'text-zinc-300 hover:text-white hover:bg-zinc-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                              style={{ backgroundColor: t.color || '#22c55e' }}
+                            />
+                            <span className="truncate text-xs font-semibold">#{t.name}</span>
+                          </div>
+                          {t.count !== undefined && (
+                            <span
+                              className={`text-[11px] font-mono px-2 py-0.5 rounded-full ${
+                                isTagActive
+                                  ? 'bg-brand-500/25 text-brand-300'
+                                  : 'bg-zinc-800 text-zinc-400'
+                              }`}
+                            >
+                              {t.count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

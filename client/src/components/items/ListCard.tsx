@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Item, NotePriority } from '../../types/index.js';
+import { Item, NotePriority, DensityMode } from '../../types/index.js';
 import {
   CheckSquare,
   List,
@@ -10,10 +10,12 @@ import {
   EyeOff,
   ChevronDown,
   ChevronUp,
-  Check
+  Check,
+  RotateCcw,
+  Copy
 } from 'lucide-react';
 import { updateItem } from '../../api/index.js';
-import { hapticTap } from '../../services/native.js';
+import { hapticSuccess, hapticTap } from '../../services/native.js';
 import {
   analyzeNoteContent,
   toggleChecklistItemByLine,
@@ -24,27 +26,46 @@ import {
   BlockquoteItemData,
   TextItemData
 } from '../../utils/markdownList.js';
+import { wikilinkFromEvent } from '../../utils/wikilinks.js';
 
 interface ListCardProps {
   item: Item;
   priorities?: NotePriority[];
+  density?: DensityMode;
   isExpanded?: boolean;
+  isTrashMode?: boolean;
   onOpen: (item: Item) => void;
   onUpdate?: (updated: Item) => void;
   onToggleFavorite: (item: Item) => void;
   onTogglePin: (item: Item) => void;
   onDelete: (id: string) => void;
+  onRestore?: (item: Item) => void;
+  onDuplicate?: (item: Item) => void;
+  onSelectTag?: (tag: string) => void;
+  onNavigateWikilink?: (title: string) => void;
+  isSelected?: boolean;
+  isSelectMode?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 export const ListCard: React.FC<ListCardProps> = ({
   item,
   priorities = [],
+  density = 'cozy',
   isExpanded = false,
+  isTrashMode = false,
   onOpen,
   onUpdate,
   onToggleFavorite,
   onTogglePin,
-  onDelete
+  onDelete,
+  onRestore,
+  onDuplicate,
+  onSelectTag,
+  onNavigateWikilink,
+  isSelected = false,
+  isSelectMode = false,
+  onToggleSelect
 }) => {
   const priority = priorities.find((p) => p.id === item.priority);
 
@@ -97,8 +118,11 @@ export const ListCard: React.FC<ListCardProps> = ({
     });
   }, [parsedLines, item.title, preamble]);
 
+  const isTrash = isTrashMode || Boolean(item.is_archived);
+
   // Toggle checklist checkbox
   const handleToggleLine = async (lineIndex: number) => {
+    if (isTrash) return;
     hapticTap();
     const nextContent = toggleChecklistItemByLine(localContent, lineIndex);
     setLocalContent(nextContent);
@@ -127,10 +151,69 @@ export const ListCard: React.FC<ListCardProps> = ({
   const visibleLines = expanded ? displayLines : displayLines.slice(0, MAX_COLLAPSED_ITEMS);
   const remainingCount = displayLines.length - MAX_COLLAPSED_ITEMS;
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (isSelectMode || e.metaKey || e.ctrlKey || e.shiftKey) {
+      e.stopPropagation();
+      hapticTap();
+      onToggleSelect?.(item.id);
+      return;
+    }
+    onOpen(item);
+  };
+
+  const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const wikilink = wikilinkFromEvent(e);
+    if (wikilink) {
+      e.stopPropagation();
+      e.preventDefault();
+      hapticTap();
+      onNavigateWikilink?.(wikilink);
+    }
+  };
+
+  const paddingClass = density === 'compact'
+    ? 'p-2.5 sm:p-3'
+    : density === 'comfortable'
+      ? 'p-3.5 sm:p-4'
+      : 'p-4 sm:p-5';
+
+  const titleClass = density === 'compact'
+    ? `font-bold text-zinc-100 text-base leading-snug transition-colors ${
+        isChecklist ? 'group-hover:text-indigo-400' : 'group-hover:text-sky-400'
+      }`
+    : density === 'comfortable'
+      ? `font-bold text-zinc-100 text-base sm:text-lg leading-snug transition-colors ${
+          isChecklist ? 'group-hover:text-indigo-400' : 'group-hover:text-sky-400'
+        }`
+      : `font-bold text-zinc-100 text-lg sm:text-xl leading-snug transition-colors ${
+          isChecklist ? 'group-hover:text-indigo-400' : 'group-hover:text-sky-400'
+        }`;
+
+  const footerClass = density === 'compact'
+    ? 'mt-2.5 pt-1.5 border-t border-zinc-800/90 flex items-center justify-between text-xs text-zinc-400'
+    : density === 'comfortable'
+      ? 'mt-3.5 pt-2 border-t border-zinc-800/90 flex items-center justify-between text-xs text-zinc-400'
+      : 'mt-5 pt-3 border-t border-zinc-800/90 flex items-center justify-between text-xs text-zinc-400';
+
   return (
     <div
-      onClick={() => onOpen(item)}
-      className="flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-zinc-900/95 border border-zinc-800 hover:border-zinc-700/80 transition-all duration-200 shadow-md shadow-black/30 ring-1 ring-white/5 cursor-pointer group active:scale-[0.99]"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open list: ${item.title || 'Untitled'}`}
+      onClick={handleCardClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.target === e.currentTarget) {
+            e.preventDefault();
+            handleCardClick(e as any);
+          }
+        }
+      }}
+      className={`flex flex-col justify-between ${paddingClass} rounded-2xl bg-zinc-900/95 border transition-all duration-200 shadow-md shadow-black/30 cursor-pointer group active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none ${
+        isSelected
+          ? 'border-brand-500 ring-2 ring-brand-500/40 bg-brand-500/5'
+          : 'border-zinc-800 hover:border-zinc-700/80 ring-1 ring-white/5'
+      }`}
       style={
         priority
           ? {
@@ -144,6 +227,24 @@ export const ListCard: React.FC<ListCardProps> = ({
         {/* Card Header Bar */}
         <div className="flex items-center justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-hidden">
+            {isSelectMode && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  hapticTap();
+                  onToggleSelect?.(item.id);
+                }}
+                className={`w-5 h-5 rounded-md flex items-center justify-center border transition touch-manipulation shrink-0 ${
+                  isSelected
+                    ? 'bg-brand-500 border-brand-500 text-white shadow-sm'
+                    : 'bg-zinc-800 border-zinc-600 text-transparent hover:border-zinc-400'
+                }`}
+                title={isSelected ? 'Deselect' : 'Select'}
+              >
+                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            )}
             {isChecklist ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold tracking-wide uppercase bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 rounded-lg shrink-0">
                 <CheckSquare className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
@@ -224,50 +325,86 @@ export const ListCard: React.FC<ListCardProps> = ({
                 hapticTap();
                 setLocalExpanded(!expanded);
               }}
-              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
               title={expanded ? 'Collapse preview' : 'Show all items'}
+              aria-label={expanded ? 'Collapse preview' : 'Show all items'}
             >
               {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                hapticTap();
-                onToggleFavorite(item);
-              }}
-              className={`h-10 w-10 flex items-center justify-center rounded-lg transition touch-manipulation ${
-                item.is_favorite
-                  ? 'text-amber-400 bg-amber-400/10'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-              }`}
-              title="Favorite"
-            >
-              <Star className={`w-4 h-4 ${item.is_favorite ? 'fill-amber-400' : ''}`} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                hapticTap();
-                onTogglePin(item);
-              }}
-              className={`h-10 w-10 flex items-center justify-center rounded-lg transition touch-manipulation ${
-                item.is_pinned
-                  ? 'text-brand-400 bg-brand-400/10'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-              }`}
-              title="Pin to top"
-            >
-              <Pin className={`w-4 h-4 ${item.is_pinned ? 'fill-brand-400' : ''}`} />
-            </button>
+            {isTrash ? (
+              <button
+                type="button"
+                onClick={() => {
+                  hapticSuccess();
+                  if (onRestore) onRestore(item);
+                }}
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition touch-manipulation"
+                title="Restore from Trash"
+                aria-label="Restore item"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticTap();
+                    onToggleFavorite(item);
+                  }}
+                  className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition touch-manipulation ${
+                    item.is_favorite
+                      ? 'text-amber-400 bg-amber-400/10'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                  title={item.is_favorite ? 'Remove favorite' : 'Mark as favorite'}
+                  aria-label={item.is_favorite ? 'Remove favorite' : 'Mark as favorite'}
+                >
+                  <Star className={`w-4 h-4 ${item.is_favorite ? 'fill-amber-400' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticTap();
+                    onTogglePin(item);
+                  }}
+                  className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition touch-manipulation ${
+                    item.is_pinned
+                      ? 'text-brand-400 bg-brand-400/10'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                  title={item.is_pinned ? 'Unpin list' : 'Pin to top'}
+                  aria-label={item.is_pinned ? 'Unpin list' : 'Pin to top'}
+                >
+                  <Pin className={`w-4 h-4 ${item.is_pinned ? 'fill-brand-400' : ''}`} />
+                </button>
+                {onDuplicate && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      hapticTap();
+                      onDuplicate(item);
+                    }}
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition touch-manipulation"
+                    title="Duplicate list"
+                    aria-label="Duplicate list"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                )}
+              </>
+            )}
             <button
               type="button"
               onClick={() => {
                 hapticTap();
                 onDelete(item.id);
               }}
-              className="h-10 w-10 flex items-center justify-center rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
-              title="Delete"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition touch-manipulation"
+              title={isTrash ? 'Permanently Delete' : 'Delete'}
+              aria-label={isTrash ? 'Permanently Delete' : 'Delete list'}
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -275,11 +412,7 @@ export const ListCard: React.FC<ListCardProps> = ({
         </div>
 
         {/* Title */}
-        <h3
-          className={`font-bold text-zinc-100 text-lg sm:text-xl leading-snug transition-colors ${
-            isChecklist ? 'group-hover:text-indigo-400' : 'group-hover:text-sky-400'
-          }`}
-        >
+        <h3 className={titleClass}>
           {item.title}
         </h3>
 
@@ -300,13 +433,14 @@ export const ListCard: React.FC<ListCardProps> = ({
         {/* Optional Preamble / Subtitle */}
         {preamble && (
           <div
+            onClick={handleContentClick}
             className="note-markdown text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 italic mb-2 [&_strong]:text-zinc-900 dark:[&_strong]:text-zinc-100 [&_em]:text-zinc-800 dark:[&_em]:text-zinc-200"
             dangerouslySetInnerHTML={{ __html: renderInlineMarkdownHtml(preamble) }}
           />
         )}
 
         {/* List Content Rows */}
-        <div className="mt-2 space-y-1">
+        <div className="mt-2 space-y-1" onClick={handleContentClick}>
           {visibleLines.map((line, idx) => {
             if (line.type === 'checklist') {
               return (
@@ -434,7 +568,7 @@ export const ListCard: React.FC<ListCardProps> = ({
       </div>
 
       {/* Card Footer */}
-      <div className="mt-5 pt-3 border-t border-zinc-800/90 flex items-center justify-between text-xs text-zinc-400">
+      <div className={footerClass}>
         <span className="font-medium">
           {new Date(item.updated_at).toLocaleDateString([], {
             month: 'short',
@@ -448,12 +582,19 @@ export const ListCard: React.FC<ListCardProps> = ({
               const name = typeof t === 'string' ? t : t.name;
               const key = typeof t === 'string' ? `${t}-${idx}` : t.id;
               return (
-                <span
+                <button
                   key={key}
-                  className="text-xs text-zinc-300 px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700/60 font-medium"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    hapticTap();
+                    onSelectTag?.(name);
+                  }}
+                  className="text-xs text-zinc-300 hover:text-white px-2 py-0.5 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 hover:border-zinc-500 font-medium transition cursor-pointer touch-manipulation"
+                  title={`Filter by #${name}`}
                 >
                   #{name}
-                </span>
+                </button>
               );
             })}
           </div>

@@ -2,7 +2,10 @@ import { FastifyInstance } from 'fastify';
 import archiver from 'archiver';
 import zlib from 'zlib';
 import AdmZip from 'adm-zip';
-import { db } from '../db/index.js';
+import path from 'path';
+import fs from 'fs';
+import { db, UPLOADS_DIR } from '../db/index.js';
+import { refreshItemLinks } from '../services/links.js';
 
 function extractBackupJsonFromZip(buf: Buffer): any {
   // 1. Try adm-zip first
@@ -72,6 +75,24 @@ export async function exportRoutes(fastify: FastifyInstance) {
 
     const itemTags = db.prepare('SELECT * FROM item_tags').all() as any[];
 
+    const timers = (userId
+      ? db.prepare('SELECT * FROM timers WHERE user_id = ? OR user_id IS NULL').all(userId)
+      : db.prepare('SELECT * FROM timers').all()) as any[];
+
+    const reminders = (userId
+      ? db.prepare('SELECT * FROM reminders WHERE user_id = ? OR user_id IS NULL').all(userId)
+      : db.prepare('SELECT * FROM reminders').all()) as any[];
+
+    const settings = db.prepare('SELECT * FROM settings').all() as any[];
+
+    const counterHistory = (userId
+      ? db.prepare(`
+          SELECT ch.* FROM counter_history ch
+          JOIN items i ON ch.item_id = i.id
+          WHERE i.user_id = ? OR i.user_id IS NULL
+        `).all(userId)
+      : db.prepare('SELECT * FROM counter_history').all()) as any[];
+
     // Notebook map for folder naming
     const notebookMap = new Map<string, string>();
     notebookMap.set('uncategorized', 'Uncategorized');
@@ -104,7 +125,11 @@ export async function exportRoutes(fastify: FastifyInstance) {
         metadata: JSON.parse(i.metadata || '{}')
       })),
       tags,
-      itemTags
+      itemTags,
+      timers,
+      reminders,
+      settings,
+      counter_history: counterHistory
     };
     archive.append(JSON.stringify(fullBackup, null, 2), { name: 'free-form-backup.json' });
 
@@ -135,6 +160,79 @@ export async function exportRoutes(fastify: FastifyInstance) {
       }
 
       archive.append(mdContent, { name: itemFilename });
+    }
+
+    // 3. User upload attachments
+    if (fs.existsSync(UPLOADS_DIR)) {
+      try {
+        const uploadFiles = fs.readdirSync(UPLOADS_DIR);
+        for (const file of uploadFiles) {
+          const filePath = path.join(UPLOADS_DIR, file);
+          if (fs.statSync(filePath).isFile()) {
+            archive.file(filePath, { name: `uploads/${file}` });
+          }
+        }
+      } catch {}
+    }
+
+    await archive.finalize();
+  });
+
+  // POST /api/export/batch - Export selected notes as a ZIP of Markdown files
+  fastify.post('/api/export/batch', async (request, reply) => {
+    const { ids } = (request.body as any) || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return reply.code(400).send({ error: 'ids array is required' });
+    }
+    const userId = (request as any).user?.id;
+    const placeholders = ids.map(() => '?').join(',');
+    const sql = `
+      SELECT i.*, n.name as notebook_name
+      FROM items i
+      LEFT JOIN notebooks n ON i.notebook_id = n.id
+      WHERE i.id IN (${placeholders}) ${userId ? 'AND (i.user_id = ? OR i.user_id IS NULL)' : ''}
+    `;
+    const params = userId ? [...ids, userId] : [...ids];
+    const items = db.prepare(sql).all(...params) as any[];
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `free-form-selected-notes-${dateStr}.zip`;
+
+    reply.raw.setHeader('Content-Type', 'application/zip');
+    reply.raw.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(reply.raw);
+
+    const usedFilenames = new Map<string, number>();
+
+    for (const item of items) {
+      const folderName = item.notebook_name ? item.notebook_name.replace(/[/\\?%*:|"<>]/g, '-').trim() : 'General';
+      const cleanTitle = (item.title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-').trim();
+      const fileKey = `${folderName}/${cleanTitle}`;
+      const count = usedFilenames.get(fileKey) || 0;
+      usedFilenames.set(fileKey, count + 1);
+      const uniqueName = count > 0 ? `${cleanTitle} (${count}).md` : `${cleanTitle}.md`;
+
+      const tags = db.prepare(`
+        SELECT t.name FROM tags t
+        JOIN item_tags it ON t.id = it.tag_id
+        WHERE it.item_id = ?
+      `).all(item.id) as any[];
+
+      const tagNames = tags.map((t) => t.name);
+
+      let frontmatter = '---\n';
+      frontmatter += `title: "${(item.title || 'Untitled').replace(/"/g, '\\"')}"\n`;
+      frontmatter += `type: ${item.type}\n`;
+      if (item.priority) frontmatter += `priority: ${item.priority}\n`;
+      if (tagNames.length > 0) frontmatter += `tags: [${tagNames.map((t) => `"${t}"`).join(', ')}]\n`;
+      frontmatter += `created: ${item.created_at}\n`;
+      frontmatter += `updated: ${item.updated_at}\n`;
+      frontmatter += '---\n\n';
+
+      const fileContent = frontmatter + (item.content || '');
+      archive.append(fileContent, { name: `${folderName}/${uniqueName}` });
     }
 
     await archive.finalize();
@@ -172,6 +270,24 @@ export async function exportRoutes(fastify: FastifyInstance) {
         } catch (err: any) {
           return reply.code(400).send({ error: 'Failed to extract ZIP archive: ' + err.message });
         }
+
+        // Restore uploads from ZIP archive
+        try {
+          if (!fs.existsSync(UPLOADS_DIR)) {
+            fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+          }
+          const zip = new AdmZip(buffer);
+          const zipEntries = zip.getEntries();
+          for (const entry of zipEntries) {
+            if (entry.entryName.startsWith('uploads/') && !entry.isDirectory) {
+              const fileName = path.basename(entry.entryName);
+              if (fileName && !fileName.includes('..') && !fileName.includes('/') && !fileName.includes('\\')) {
+                const destPath = path.join(UPLOADS_DIR, fileName);
+                fs.writeFileSync(destPath, entry.getData());
+              }
+            }
+          }
+        } catch {}
       }
     } else if (request.body && typeof request.body === 'object') {
       backupData = request.body;
@@ -188,12 +304,22 @@ export async function exportRoutes(fastify: FastifyInstance) {
     const items = Array.isArray(backupData.items) ? backupData.items : [];
     const tags = Array.isArray(backupData.tags) ? backupData.tags : [];
     const itemTags = Array.isArray(backupData.itemTags) ? backupData.itemTags : [];
+    const timers = Array.isArray(backupData.timers) ? backupData.timers : [];
+    const reminders = Array.isArray(backupData.reminders) ? backupData.reminders : [];
+    const settings = Array.isArray(backupData.settings) ? backupData.settings : [];
+    const counterHistory = Array.isArray(backupData.counter_history)
+      ? backupData.counter_history
+      : (Array.isArray(backupData.counterHistory) ? backupData.counterHistory : []);
 
     const stats = {
       notebooks: 0,
       templates: 0,
       items: 0,
-      tags: 0
+      tags: 0,
+      timers: 0,
+      reminders: 0,
+      settings: 0,
+      counter_history: 0
     };
 
     const knownNotebookIds = new Set<string>(notebooks.map((n: any) => n.id));
@@ -343,6 +469,7 @@ export async function exportRoutes(fastify: FastifyInstance) {
           item.created_at || new Date().toISOString(),
           item.updated_at || new Date().toISOString()
         );
+        refreshItemLinks(item.id);
         stats.items++;
       }
 
@@ -357,6 +484,113 @@ export async function exportRoutes(fastify: FastifyInstance) {
             insertItemTag.run(it.item_id, it.tag_id);
           } catch {}
         }
+      }
+
+      // 6. Counter History
+      const insertCounterHistory = db.prepare(`
+        INSERT OR IGNORE INTO counter_history (id, item_id, delta, new_value, note, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const ch of counterHistory) {
+        if (!ch.id || !ch.item_id) continue;
+        insertCounterHistory.run(
+          ch.id,
+          ch.item_id,
+          ch.delta ?? 0,
+          ch.new_value ?? 0,
+          ch.note || '',
+          ch.created_at || new Date().toISOString()
+        );
+        stats.counter_history++;
+      }
+
+      // 7. Timers
+      const insertTimer = db.prepare(`
+        INSERT INTO timers (id, user_id, title, duration_seconds, remaining_seconds, status, target_end_time, started_at, paused_at, completed_at, notebook_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          duration_seconds = excluded.duration_seconds,
+          remaining_seconds = excluded.remaining_seconds,
+          status = excluded.status,
+          target_end_time = excluded.target_end_time,
+          started_at = excluded.started_at,
+          paused_at = excluded.paused_at,
+          completed_at = excluded.completed_at,
+          notebook_id = excluded.notebook_id,
+          user_id = COALESCE(excluded.user_id, timers.user_id),
+          updated_at = excluded.updated_at
+      `);
+      for (const tm of timers) {
+        if (!tm.id || !tm.title) continue;
+        const notebookId = (tm.notebook_id && knownNotebookIds.has(tm.notebook_id)) ? tm.notebook_id : null;
+        insertTimer.run(
+          tm.id,
+          userId,
+          tm.title,
+          tm.duration_seconds ?? 0,
+          tm.remaining_seconds ?? 0,
+          tm.status || 'idle',
+          tm.target_end_time || null,
+          tm.started_at || null,
+          tm.paused_at || null,
+          tm.completed_at || null,
+          notebookId,
+          tm.created_at || new Date().toISOString(),
+          tm.updated_at || new Date().toISOString()
+        );
+        stats.timers++;
+      }
+
+      // 8. Reminders
+      const insertReminder = db.prepare(`
+        INSERT INTO reminders (id, user_id, title, notes, due_date, status, priority, notebook_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          notes = excluded.notes,
+          due_date = excluded.due_date,
+          status = excluded.status,
+          priority = excluded.priority,
+          notebook_id = excluded.notebook_id,
+          user_id = COALESCE(excluded.user_id, reminders.user_id),
+          updated_at = excluded.updated_at
+      `);
+      for (const rem of reminders) {
+        if (!rem.id || !rem.title || !rem.due_date) continue;
+        const notebookId = (rem.notebook_id && knownNotebookIds.has(rem.notebook_id)) ? rem.notebook_id : null;
+        insertReminder.run(
+          rem.id,
+          userId,
+          rem.title,
+          rem.notes || '',
+          rem.due_date,
+          rem.status || 'pending',
+          rem.priority || 'normal',
+          notebookId,
+          rem.created_at || new Date().toISOString(),
+          rem.updated_at || new Date().toISOString()
+        );
+        stats.reminders++;
+      }
+
+      // 9. Settings
+      const insertSetting = db.prepare(`
+        INSERT INTO settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at
+      `);
+      for (const set of settings) {
+        if (!set.key || set.value === undefined) continue;
+        const valStr = typeof set.value === 'object' ? JSON.stringify(set.value) : String(set.value);
+        insertSetting.run(
+          set.key,
+          valStr,
+          set.updated_at || new Date().toISOString()
+        );
+        stats.settings++;
       }
     });
 

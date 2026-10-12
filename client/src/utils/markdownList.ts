@@ -1,4 +1,5 @@
 import { Marked, marked } from 'marked';
+import { wikilinkMarkedExtension } from './wikilinks.js';
 
 export const CHECKLIST_ITEM_REGEX = /^(\s*)([-*+]|\d+\.)\s+\[([ xX])\]\s*(.*)$/;
 export const BULLET_ITEM_REGEX = /^(\s*)([-*+]|\d+\.)\s+(?!\[[ xX]\])(.*)$/;
@@ -322,28 +323,34 @@ export function renderInteractiveMarkdownHtml(content: string): string {
   if (!content || !content.trim()) return '';
 
   let checkboxIdx = 0;
-  const markedInstance = new Marked({
-    renderer: {
-      checkbox({ checked }) {
-        const currentIdx = checkboxIdx++;
-        return `<input type="checkbox" data-checklist-index="${currentIdx}" class="task-checkbox cursor-pointer mr-2 accent-indigo-500 rounded hover:ring-2 hover:ring-indigo-400/50 transition-all touch-manipulation" ${checked ? 'checked' : ''} />`;
-      },
-      html(token) {
-        return (token.text || token.raw || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const markedInstance = new Marked(
+    {
+      renderer: {
+        checkbox({ checked }) {
+          const currentIdx = checkboxIdx++;
+          return `<input type="checkbox" data-checklist-index="${currentIdx}" class="task-checkbox cursor-pointer mr-2 accent-indigo-500 rounded hover:ring-2 hover:ring-indigo-400/50 transition-all touch-manipulation" ${checked ? 'checked' : ''} />`;
+        },
+        html(token) {
+          return (token.text || token.raw || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
       }
-    }
-  });
+    },
+    { extensions: [wikilinkMarkedExtension] }
+  );
 
   return markedInstance.parse(content) as string;
 }
 
-const inlineMarkedInstance = new Marked({
-  renderer: {
-    html(token) {
-      return (token.text || token.raw || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const inlineMarkedInstance = new Marked(
+  {
+    renderer: {
+      html(token) {
+        return (token.text || token.raw || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
     }
-  }
-});
+  },
+  { extensions: [wikilinkMarkedExtension] }
+);
 
 /**
  * Renders inline markdown formatting (bold, italic, code, strikethrough).

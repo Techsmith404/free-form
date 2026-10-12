@@ -2,17 +2,30 @@ import WebSocket, { WebSocket as WSClient } from 'ws';
 import { db } from '../db/index.js';
 import { Timer, Reminder, RealtimeEvent } from '../types/index.js';
 
-// Connected active clients
-const clients = new Set<WSClient>();
+// User-partitioned active client connections
+const clientsByUser = new Map<string, Set<WSClient>>();
+const clientToUser = new Map<WSClient, string>();
 
-export function addClient(ws: WSClient) {
-  clients.add(ws);
-  // Send current state on connection
+export function addClient(ws: WSClient, userId: string = 'usr-default') {
+  if (!clientsByUser.has(userId)) {
+    clientsByUser.set(userId, new Set());
+  }
+  clientsByUser.get(userId)!.add(ws);
+  clientToUser.set(ws, userId);
+
+  // Send current state scoped to the authenticated user on connection
   try {
-    const timers = getAllTimers();
-    const reminders = getAllReminders();
-    const conflictRows = db.prepare("SELECT * FROM conflicts WHERE status = 'unresolved' ORDER BY created_at DESC").all() as any[];
-    const conflicts = conflictRows.map(r => ({
+    const timers = getAllTimers(userId);
+    const reminders = getAllReminders(userId);
+    let conflictSql = "SELECT * FROM conflicts WHERE status = 'unresolved'";
+    const conflictParams: any[] = [];
+    if (userId && userId !== 'usr-default') {
+      conflictSql += " AND (item_id IN (SELECT id FROM items WHERE user_id = ? OR user_id IS NULL))";
+      conflictParams.push(userId);
+    }
+    conflictSql += " ORDER BY created_at DESC";
+    const conflictRows = db.prepare(conflictSql).all(...conflictParams) as any[];
+    const conflicts = conflictRows.map((r) => ({
       ...r,
       active_metadata: JSON.parse(r.active_metadata || '{}'),
       conflict_metadata: JSON.parse(r.conflict_metadata || '{}'),
@@ -26,13 +39,19 @@ export function addClient(ws: WSClient) {
     console.error('Failed to send initial sync state:', err);
   }
 
-  ws.on('close', () => {
-    clients.delete(ws);
-  });
+  const removeClient = () => {
+    const uId = clientToUser.get(ws);
+    if (uId && clientsByUser.has(uId)) {
+      clientsByUser.get(uId)!.delete(ws);
+      if (clientsByUser.get(uId)!.size === 0) {
+        clientsByUser.delete(uId);
+      }
+    }
+    clientToUser.delete(ws);
+  };
 
-  ws.on('error', () => {
-    clients.delete(ws);
-  });
+  ws.on('close', removeClient);
+  ws.on('error', removeClient);
 
   ws.on('message', (data: WebSocket.RawData) => {
     try {
@@ -42,17 +61,55 @@ export function addClient(ws: WSClient) {
   });
 }
 
-export function broadcast(event: RealtimeEvent) {
+export function getActiveClientCount(): number {
+  let count = 0;
+  for (const set of clientsByUser.values()) {
+    count += set.size;
+  }
+  return count;
+}
+
+export function broadcast(event: RealtimeEvent, targetUserId?: string) {
   const data = JSON.stringify(event);
-  for (const client of clients) {
+
+  if (targetUserId) {
+    const userClients = clientsByUser.get(targetUserId);
+    if (userClients) {
+      for (const client of userClients) {
+        if (client.readyState === WebSocket.OPEN) {
+          try {
+            client.send(data);
+          } catch {
+            userClients.delete(client);
+            clientToUser.delete(client);
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // Global broadcast across all clients
+  for (const client of clientToUser.keys()) {
     if (client.readyState === WebSocket.OPEN) {
       try {
         client.send(data);
       } catch {
-        clients.delete(client);
+        const uId = clientToUser.get(client);
+        if (uId && clientsByUser.has(uId)) {
+          clientsByUser.get(uId)!.delete(client);
+        }
+        clientToUser.delete(client);
       }
     }
   }
+}
+
+export function getClientCount(userId?: string): number {
+  if (userId) {
+    return clientsByUser.get(userId)?.size || 0;
+  }
+  return clientToUser.size;
 }
 
 function handleClientMessage(msg: any) {
@@ -86,9 +143,14 @@ function handleClientMessage(msg: any) {
 // TIMER DATABASE OPERATIONS
 // -----------------------------------------------------------------------------
 
-export function getAllTimers(): Timer[] {
-  return db.prepare(`
-    SELECT * FROM timers 
+export function getAllTimers(userId?: string): Timer[] {
+  let sql = `SELECT * FROM timers`;
+  const params: any[] = [];
+  if (userId && userId !== 'usr-default') {
+    sql += ` WHERE (user_id = ? OR user_id IS NULL)`;
+    params.push(userId);
+  }
+  sql += `
     ORDER BY 
       CASE status 
         WHEN 'ringing' THEN 1 
@@ -98,7 +160,8 @@ export function getAllTimers(): Timer[] {
         ELSE 5 
       END,
       created_at DESC
-  `).all() as Timer[];
+  `;
+  return db.prepare(sql).all(...params) as Timer[];
 }
 
 export function getTimerById(id: string): Timer | undefined {
@@ -110,6 +173,7 @@ export function createTimer(params: {
   duration_seconds: number;
   notebook_id?: string | null;
   auto_start?: boolean;
+  user_id?: string | null;
 }): Timer {
   const id = 'tm-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
   const now = new Date().toISOString();
@@ -124,8 +188,8 @@ export function createTimer(params: {
     INSERT INTO timers (
       id, title, duration_seconds, remaining_seconds, status, 
       target_end_time, started_at, paused_at, completed_at, 
-      notebook_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      notebook_id, user_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     params.title || 'Timer',
@@ -137,12 +201,13 @@ export function createTimer(params: {
     null,
     null,
     params.notebook_id || null,
+    params.user_id || null,
     now,
     now
   );
 
   const timer = getTimerById(id)!;
-  broadcast({ type: 'TIMER_UPDATED', payload: { timer } });
+  broadcast({ type: 'TIMER_UPDATED', payload: { timer } }, timer.user_id || undefined);
   return timer;
 }
 
@@ -166,7 +231,7 @@ export function startTimer(id: string): Timer | null {
   `).run(remaining, targetEndTime, now, now, id);
 
   const updated = getTimerById(id)!;
-  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } });
+  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } }, updated.user_id || undefined);
   return updated;
 }
 
@@ -192,7 +257,7 @@ export function pauseTimer(id: string): Timer | null {
   `).run(remaining, now, now, id);
 
   const updated = getTimerById(id)!;
-  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } });
+  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } }, updated.user_id || undefined);
   return updated;
 }
 
@@ -214,7 +279,7 @@ export function resetTimer(id: string): Timer | null {
   `).run(now, id);
 
   const updated = getTimerById(id)!;
-  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } });
+  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } }, updated.user_id || undefined);
   return updated;
 }
 
@@ -233,15 +298,16 @@ export function dismissTimer(id: string): Timer | null {
 
   const updated = getTimerById(id)!;
   // Broadcast dismissal event so all connected devices stop playing audio immediately
-  broadcast({ type: 'TIMER_DISMISSED', payload: { timerId: id } });
-  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } });
+  broadcast({ type: 'TIMER_DISMISSED', payload: { timerId: id } }, updated.user_id || undefined);
+  broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } }, updated.user_id || undefined);
   return updated;
 }
 
 export function deleteTimer(id: string): boolean {
+  const timer = getTimerById(id);
   const res = db.prepare('DELETE FROM timers WHERE id = ?').run(id);
   if (res.changes > 0) {
-    broadcast({ type: 'TIMER_DELETED', payload: { timerId: id } });
+    broadcast({ type: 'TIMER_DELETED', payload: { timerId: id } }, timer?.user_id || undefined);
     return true;
   }
   return false;
@@ -251,9 +317,14 @@ export function deleteTimer(id: string): boolean {
 // REMINDER DATABASE OPERATIONS
 // -----------------------------------------------------------------------------
 
-export function getAllReminders(): Reminder[] {
-  return db.prepare(`
-    SELECT * FROM reminders 
+export function getAllReminders(userId?: string): Reminder[] {
+  let sql = `SELECT * FROM reminders`;
+  const params: any[] = [];
+  if (userId && userId !== 'usr-default') {
+    sql += ` WHERE (user_id = ? OR user_id IS NULL)`;
+    params.push(userId);
+  }
+  sql += `
     ORDER BY 
       CASE status 
         WHEN 'triggered' THEN 1 
@@ -262,7 +333,8 @@ export function getAllReminders(): Reminder[] {
         ELSE 4 
       END,
       due_date ASC
-  `).all() as Reminder[];
+  `;
+  return db.prepare(sql).all(...params) as Reminder[];
 }
 
 export function getReminderById(id: string): Reminder | undefined {
@@ -275,14 +347,15 @@ export function createReminder(params: {
   due_date: string;
   priority?: 'low' | 'normal' | 'high';
   notebook_id?: string | null;
+  user_id?: string | null;
 }): Reminder {
   const id = 'rm-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
   const now = new Date().toISOString();
 
   db.prepare(`
     INSERT INTO reminders (
-      id, title, notes, due_date, status, priority, notebook_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, title, notes, due_date, status, priority, notebook_id, user_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     params.title,
@@ -291,12 +364,13 @@ export function createReminder(params: {
     'pending',
     params.priority || 'normal',
     params.notebook_id || null,
+    params.user_id || null,
     now,
     now
   );
 
   const reminder = getReminderById(id)!;
-  broadcast({ type: 'REMINDER_UPDATED', payload: { reminder } });
+  broadcast({ type: 'REMINDER_UPDATED', payload: { reminder } }, reminder.user_id || undefined);
   return reminder;
 }
 
@@ -327,7 +401,7 @@ export function updateReminder(id: string, updates: Partial<Reminder>): Reminder
   );
 
   const updated = getReminderById(id)!;
-  broadcast({ type: 'REMINDER_UPDATED', payload: { reminder: updated } });
+  broadcast({ type: 'REMINDER_UPDATED', payload: { reminder: updated } }, updated.user_id || undefined);
   return updated;
 }
 
@@ -338,7 +412,7 @@ export function completeReminder(id: string): Reminder | null {
 export function dismissReminder(id: string): Reminder | null {
   const reminder = updateReminder(id, { status: 'dismissed' });
   if (reminder) {
-    broadcast({ type: 'REMINDER_DISMISSED', payload: { reminderId: id } });
+    broadcast({ type: 'REMINDER_DISMISSED', payload: { reminderId: id } }, reminder.user_id || undefined);
   }
   return reminder;
 }
@@ -351,15 +425,16 @@ export function snoozeReminder(id: string, minutes: number = 5): Reminder | null
   const newDue = new Date(baseTime + Math.max(1, minutes) * 60 * 1000).toISOString();
   const reminder = updateReminder(id, { due_date: newDue, status: 'pending' });
   if (reminder) {
-    broadcast({ type: 'REMINDER_DISMISSED', payload: { reminderId: id } });
+    broadcast({ type: 'REMINDER_DISMISSED', payload: { reminderId: id } }, reminder.user_id || undefined);
   }
   return reminder;
 }
 
 export function deleteReminder(id: string): boolean {
+  const reminder = getReminderById(id);
   const res = db.prepare('DELETE FROM reminders WHERE id = ?').run(id);
   if (res.changes > 0) {
-    broadcast({ type: 'REMINDER_DELETED', payload: { reminderId: id } });
+    broadcast({ type: 'REMINDER_DELETED', payload: { reminderId: id } }, reminder?.user_id || undefined);
     return true;
   }
   return false;
@@ -399,8 +474,8 @@ export function startRealtimeTicker() {
             `).run(nowIso, nowIso, timer.id);
 
             const updated = getTimerById(timer.id)!;
-            broadcast({ type: 'TIMER_RING', payload: { timer: updated } });
-            broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } });
+            broadcast({ type: 'TIMER_RING', payload: { timer: updated } }, updated.user_id || undefined);
+            broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } }, updated.user_id || undefined);
           }
         }
       }
@@ -422,8 +497,8 @@ export function startRealtimeTicker() {
           `).run(nowIso, reminder.id);
 
           const updated = getReminderById(reminder.id)!;
-          broadcast({ type: 'REMINDER_TRIGGER', payload: { reminder: updated } });
-          broadcast({ type: 'REMINDER_UPDATED', payload: { reminder: updated } });
+          broadcast({ type: 'REMINDER_TRIGGER', payload: { reminder: updated } }, updated.user_id || undefined);
+          broadcast({ type: 'REMINDER_UPDATED', payload: { reminder: updated } }, updated.user_id || undefined);
         }
       }
     } catch (err) {

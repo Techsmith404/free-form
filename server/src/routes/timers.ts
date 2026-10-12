@@ -12,8 +12,9 @@ import {
 
 export async function timerRoutes(fastify: FastifyInstance) {
   // Get all timers
-  fastify.get('/api/timers', async () => {
-    return getAllTimers();
+  fastify.get('/api/timers', async (request) => {
+    const userId = (request as any).user?.id;
+    return getAllTimers(userId);
   });
 
   // Get single timer
@@ -28,6 +29,7 @@ export async function timerRoutes(fastify: FastifyInstance) {
 
   // Create timer
   fastify.post('/api/timers', async (request, reply) => {
+    const userId = (request as any).user?.id;
     const body = request.body as any;
     if (!body || !body.duration_seconds || typeof body.duration_seconds !== 'number' || body.duration_seconds <= 0) {
       return reply.code(400).send({ error: 'Valid duration_seconds is required' });
@@ -37,7 +39,8 @@ export async function timerRoutes(fastify: FastifyInstance) {
       title: body.title?.trim() || 'Timer',
       duration_seconds: body.duration_seconds,
       notebook_id: body.notebook_id || null,
-      auto_start: Boolean(body.auto_start)
+      auto_start: Boolean(body.auto_start),
+      user_id: userId || null
     });
 
     return reply.code(201).send(timer);

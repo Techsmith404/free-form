@@ -4,6 +4,7 @@ import { SyncRequestBody, SyncResponseBody, Item, ConflictRecord, Notebook, Form
 import { generateMarkdownFromForm } from '../services/markdown.js';
 import { broadcast } from '../services/realtime.js';
 import crypto from 'crypto';
+import { refreshItemLinks } from '../services/links.js';
 
 export const syncRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: SyncRequestBody }>('/api/sync', async (request, reply) => {
@@ -50,6 +51,7 @@ export const syncRoutes: FastifyPluginAsync = async (fastify) => {
                 data.updated_at || client_timestamp || serverTime
               );
             }
+            refreshItemLinks(data.id);
             processedIds.push(mutationId);
           } else if (type === 'update_item') {
             const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(data.id) as any;
@@ -193,11 +195,16 @@ export const syncRoutes: FastifyPluginAsync = async (fastify) => {
                 );
               }
             }
+            refreshItemLinks(data.id);
             processedIds.push(mutationId);
           } else if (type === 'delete_item') {
-            db.prepare(`
-              UPDATE items SET is_archived = 1, updated_at = ? WHERE id = ?
-            `).run(client_timestamp || serverTime, data.id);
+            if (data?.permanent) {
+              db.prepare('DELETE FROM items WHERE id = ?').run(data.id);
+            } else {
+              db.prepare(`
+                UPDATE items SET is_archived = 1, updated_at = ? WHERE id = ?
+              `).run(client_timestamp || serverTime, data.id);
+            }
             processedIds.push(mutationId);
           } else if (type === 'counter_adjust') {
             const item = db.prepare('SELECT * FROM items WHERE id = ?').get(data.id) as any;

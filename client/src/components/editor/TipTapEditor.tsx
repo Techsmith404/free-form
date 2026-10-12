@@ -32,14 +32,17 @@ import {
   Upload
 } from 'lucide-react';
 import { uploadFile } from '../../api/index.js';
+import { wikilinkMarkedExtension, wikilinkFromEvent } from '../../utils/wikilinks.js';
+import { SuggestionPopup, SuggestionItem } from './SuggestionPopup.js';
 
 export function markdownToTipTapHtml(markdown: string): string {
   if (!markdown) return '';
-  const markedInstance = new Marked({
-    gfm: true,
-    breaks: false,
-    renderer: {
-      list(token) {
+  const markedInstance = new Marked(
+    {
+      gfm: true,
+      breaks: false,
+      renderer: {
+        list(token) {
         const isTaskList = token.items && token.items.some((i: any) => i.task);
         let body = '';
         for (let j = 0; j < token.items.length; j++) {
@@ -62,13 +65,32 @@ export function markdownToTipTapHtml(markdown: string): string {
         return `<li>${body}</li>\n`;
       }
     }
-  });
+  },
+  { extensions: [wikilinkMarkedExtension] }
+  );
   return markedInstance.parse(markdown) as string;
 }
 
 const turndownService = new TurndownService({
   headingStyle: 'atx',
   codeBlockStyle: 'fenced'
+});
+
+// Preserve [[wikilinks]] without backslash escaping
+const origEscape = turndownService.escape;
+turndownService.escape = function (string: string) {
+  return origEscape(string).replace(/\\\[\\\[(.*?)\\\]\\\]/g, '[[$1]]');
+};
+
+// Configure custom turndown rule for wikilink anchor tags
+turndownService.addRule('wikilinks', {
+  filter: (node) => {
+    return node.nodeName === 'A' && (node.hasAttribute('data-wikilink') || node.classList.contains('wikilink'));
+  },
+  replacement: (content, node) => {
+    const target = (node as HTMLElement).getAttribute('data-wikilink') || content;
+    return content && content !== target ? `[[${target}|${content}]]` : `[[${target}]]`;
+  }
 });
 
 // Configure custom turndown rule for task items
@@ -91,18 +113,180 @@ interface TipTapEditorProps {
   onChange: (markdown: string) => void;
   placeholder?: string;
   editable?: boolean;
+  availableNotes?: Array<{ id: string; title: string; notebook_name?: string }>;
+  availableTags?: string[];
+  onAddTag?: (tag: string) => void;
+  onNavigateWikilink?: (title: string) => void;
 }
 
 export const TipTapEditor: React.FC<TipTapEditorProps> = ({
   initialMarkdown,
   onChange,
   placeholder = 'Write freely in markdown or WYSIWYG...',
-  editable = true
+  editable = true,
+  availableNotes = [],
+  availableTags = [],
+  onAddTag,
+  onNavigateWikilink
 }) => {
   const [viewMode, setViewMode] = useState<'wysiwyg' | 'markdown'>('wysiwyg');
   const [rawMarkdown, setRawMarkdown] = useState<string>(initialMarkdown || '');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Suggestion Autocomplete state
+  const [suggestion, setSuggestion] = useState<{
+    isOpen: boolean;
+    type: 'wikilink' | 'tag';
+    query: string;
+    selectedIndex: number;
+    position: { top: number; left: number } | null;
+    replaceRange?: { from: number; to: number };
+    textareaRange?: { start: number; end: number };
+  }>({
+    isOpen: false,
+    type: 'wikilink',
+    query: '',
+    selectedIndex: 0,
+    position: null
+  });
+
+  const filteredSuggestions: SuggestionItem[] = React.useMemo(() => {
+    if (!suggestion.isOpen) return [];
+    const q = suggestion.query.toLowerCase().trim();
+    if (suggestion.type === 'wikilink') {
+      return availableNotes
+        .filter((n) => n.title.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((n) => ({ id: n.id, label: n.title, sub: n.notebook_name }));
+    } else {
+      return availableTags
+        .filter((t) => t.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((t) => ({ id: t, label: `#${t}` }));
+    }
+  }, [suggestion.isOpen, suggestion.type, suggestion.query, availableNotes, availableTags]);
+
+  const suggestionRef = React.useRef(suggestion);
+  suggestionRef.current = suggestion;
+  const filteredSuggestionsRef = React.useRef(filteredSuggestions);
+  filteredSuggestionsRef.current = filteredSuggestions;
+
+  const handleSelectSuggestion = (item: SuggestionItem) => {
+    const currSug = suggestionRef.current;
+    if (viewMode === 'wysiwyg' && editor && currSug.replaceRange) {
+      if (currSug.type === 'wikilink') {
+        editor
+          .chain()
+          .focus()
+          .deleteRange(currSug.replaceRange)
+          .insertContent(`[[${item.label}]] `)
+          .run();
+      } else {
+        const cleanTag = item.label.replace(/^#/, '');
+        editor
+          .chain()
+          .focus()
+          .deleteRange(currSug.replaceRange)
+          .insertContent(`#${cleanTag} `)
+          .run();
+        onAddTag?.(cleanTag);
+      }
+    } else if (viewMode === 'markdown' && textareaRef.current && currSug.textareaRange) {
+      const ta = textareaRef.current;
+      const { start, end } = currSug.textareaRange;
+      const val = ta.value;
+      let replacement = '';
+      if (currSug.type === 'wikilink') {
+        replacement = `[[${item.label}]] `;
+      } else {
+        const cleanTag = item.label.replace(/^#/, '');
+        replacement = `#${cleanTag} `;
+        onAddTag?.(cleanTag);
+      }
+      const next = val.slice(0, start) + replacement + val.slice(end);
+      setRawMarkdown(next);
+      onChange(next);
+      const newPos = start + replacement.length;
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(newPos, newPos);
+      });
+    }
+    setSuggestion((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const checkWysiwygSuggestion = (currentEditor: any) => {
+    if (!currentEditor) return;
+    try {
+      const { state, view } = currentEditor;
+      const { from } = state.selection;
+      const $from = state.selection.$from;
+      const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+
+      const matchWikilink = /\[\[([^\]\n]*)$/.exec(textBefore);
+      const matchTag = /(?:^|\s)#([a-zA-Z0-9_\-\/]*)$/.exec(textBefore);
+
+      if (matchWikilink) {
+        const coords = view.coordsAtPos(from);
+        setSuggestion({
+          isOpen: true,
+          type: 'wikilink',
+          query: matchWikilink[1],
+          selectedIndex: 0,
+          position: { top: coords.bottom + 4, left: coords.left },
+          replaceRange: { from: from - matchWikilink[0].length, to: from }
+        });
+      } else if (matchTag) {
+        const coords = view.coordsAtPos(from);
+        const tagMatchLength = matchTag[1].length + 1;
+        setSuggestion({
+          isOpen: true,
+          type: 'tag',
+          query: matchTag[1],
+          selectedIndex: 0,
+          position: { top: coords.bottom + 4, left: coords.left },
+          replaceRange: { from: from - tagMatchLength, to: from }
+        });
+      } else {
+        setSuggestion((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+      }
+    } catch {
+      setSuggestion((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    }
+  };
+
+  const checkTextareaSuggestion = (ta: HTMLTextAreaElement) => {
+    try {
+      const { selectionStart, value } = ta;
+      const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+      const lineBefore = value.slice(lineStart, selectionStart);
+
+      const matchWikilink = /\[\[([^\]\n]*)$/.exec(lineBefore);
+      const matchTag = /(?:^|\s)#([a-zA-Z0-9_\-\/]*)$/.exec(lineBefore);
+
+      if (matchWikilink || matchTag) {
+        const rect = ta.getBoundingClientRect();
+        const type = matchWikilink ? 'wikilink' : 'tag';
+        const query = matchWikilink ? matchWikilink[1] : matchTag![1];
+        const matchLen = matchWikilink ? matchWikilink[0].length : matchTag![1].length + 1;
+
+        setSuggestion({
+          isOpen: true,
+          type,
+          query,
+          selectedIndex: 0,
+          position: { top: rect.top + 60, left: rect.left + 24 },
+          textareaRange: { start: selectionStart - matchLen, end: selectionStart }
+        });
+      } else {
+        setSuggestion((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+      }
+    } catch {
+      setSuggestion((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    }
+  };
 
   const editor = useEditor({
     editable,
@@ -137,6 +321,46 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
       const markdown = turndownService.turndown(html);
       setRawMarkdown(markdown);
       onChange(markdown);
+      checkWysiwygSuggestion(editor);
+    },
+    onSelectionUpdate: ({ editor }) => {
+      checkWysiwygSuggestion(editor);
+    },
+    editorProps: {
+      handleKeyDown: (view, event) => {
+        const sug = suggestionRef.current;
+        const list = filteredSuggestionsRef.current;
+        if (sug.isOpen && list.length > 0) {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setSuggestion((prev) => ({
+              ...prev,
+              selectedIndex: (prev.selectedIndex + 1) % list.length
+            }));
+            return true;
+          }
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setSuggestion((prev) => ({
+              ...prev,
+              selectedIndex: (prev.selectedIndex - 1 + list.length) % list.length
+            }));
+            return true;
+          }
+          if (event.key === 'Enter' || event.key === 'Tab') {
+            event.preventDefault();
+            const item = list[sug.selectedIndex];
+            if (item) handleSelectSuggestion(item);
+            return true;
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setSuggestion((prev) => ({ ...prev, isOpen: false }));
+            return true;
+          }
+        }
+        return false;
+      }
     }
   });
 
@@ -163,6 +387,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
   // Handle switching between WYSIWYG and Markdown mode
   const handleToggleMode = (mode: 'wysiwyg' | 'markdown') => {
     if (mode === viewMode) return;
+    setSuggestion((prev) => ({ ...prev, isOpen: false }));
     if (mode === 'wysiwyg' && editor) {
       // Sync raw markdown to TipTap HTML
       const html = markdownToTipTapHtml(rawMarkdown || '');
@@ -180,6 +405,82 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
     const nextMd = e.target.value;
     setRawMarkdown(nextMd);
     onChange(nextMd);
+    checkTextareaSuggestion(e.target);
+  };
+
+  // Tab / Shift+Tab indent & unindent (two spaces) for selected lines in raw markdown mode
+  const handleRawMarkdownKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const sug = suggestionRef.current;
+    const list = filteredSuggestionsRef.current;
+    if (sug.isOpen && list.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggestion((prev) => ({
+          ...prev,
+          selectedIndex: (prev.selectedIndex + 1) % list.length
+        }));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggestion((prev) => ({
+          ...prev,
+          selectedIndex: (prev.selectedIndex - 1 + list.length) % list.length
+        }));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const item = list[sug.selectedIndex];
+        if (item) handleSelectSuggestion(item);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSuggestion((prev) => ({ ...prev, isOpen: false }));
+        return;
+      }
+    }
+    if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    const ta = e.currentTarget;
+    const { selectionStart, selectionEnd, value } = ta;
+    const INDENT = '  ';
+
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const lines = value.slice(lineStart, selectionEnd).split('\n');
+
+    let next: string;
+    let newStart = selectionStart;
+    let newEnd = selectionEnd;
+
+    if (e.shiftKey) {
+      let firstRemoved = 0;
+      let totalRemoved = 0;
+      const out = lines.map((line, i) => {
+        const m = line.match(/^( {1,2}|\t)/);
+        const removed = m ? m[0].length : 0;
+        if (i === 0) firstRemoved = removed;
+        totalRemoved += removed;
+        return line.slice(removed);
+      });
+      next = value.slice(0, lineStart) + out.join('\n') + value.slice(selectionEnd);
+      newStart = Math.max(lineStart, selectionStart - firstRemoved);
+      newEnd = Math.max(newStart, selectionEnd - totalRemoved);
+    } else if (selectionStart === selectionEnd) {
+      // Caret only: insert indent at the caret
+      next = value.slice(0, selectionStart) + INDENT + value.slice(selectionEnd);
+      newStart = newEnd = selectionStart + INDENT.length;
+    } else {
+      const out = lines.map((line) => INDENT + line);
+      next = value.slice(0, lineStart) + out.join('\n') + value.slice(selectionEnd);
+      newStart = selectionStart + INDENT.length;
+      newEnd = selectionEnd + INDENT.length * lines.length;
+    }
+
+    setRawMarkdown(next);
+    onChange(next);
+    requestAnimationFrame(() => ta.setSelectionRange(newStart, newEnd));
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -390,7 +691,17 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
       )}
 
       {/* Editor Content Area */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-5 focus:outline-none min-h-0">
+      <div
+        className="flex-1 overflow-y-auto p-3 sm:p-5 focus:outline-none min-h-0 relative"
+        onClick={(e) => {
+          const target = wikilinkFromEvent(e);
+          if (target && onNavigateWikilink) {
+            e.preventDefault();
+            e.stopPropagation();
+            onNavigateWikilink(target);
+          }
+        }}
+      >
         {viewMode === 'wysiwyg' ? (
           <EditorContent
             editor={editor}
@@ -398,14 +709,25 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
           />
         ) : (
           <textarea
+            ref={textareaRef}
             value={rawMarkdown}
             onChange={handleRawMarkdownChange}
+            onKeyDown={handleRawMarkdownKeyDown}
             placeholder={placeholder}
             className="w-full h-full min-h-full bg-transparent text-zinc-100 font-mono text-sm sm:text-base leading-relaxed resize-none focus:outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
             spellCheck={false}
           />
         )}
       </div>
+
+      <SuggestionPopup
+        isOpen={suggestion.isOpen}
+        type={suggestion.type}
+        items={filteredSuggestions}
+        selectedIndex={suggestion.selectedIndex}
+        onSelect={handleSelectSuggestion}
+        position={suggestion.position}
+      />
     </div>
   );
 };

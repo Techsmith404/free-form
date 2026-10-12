@@ -87,6 +87,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   return (
     <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
+      aria-describedby="confirm-modal-desc"
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
       onClick={() => {
         if (!isLoading) onClose();
@@ -104,10 +108,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             <div className="flex items-start gap-4">
               {renderIcon()}
               <div>
-                <h3 className="text-lg font-bold text-zinc-100 leading-snug">
+                <h3 id="confirm-modal-title" className="text-lg font-bold text-zinc-100 leading-snug">
                   {title}
                 </h3>
-                <p className="text-sm text-zinc-400 mt-1.5 leading-relaxed">
+                <p id="confirm-modal-desc" className="text-sm text-zinc-400 mt-1.5 leading-relaxed">
                   {message}
                 </p>
               </div>
@@ -117,8 +121,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isLoading}
-              className="text-zinc-500 hover:text-zinc-300 disabled:opacity-30 transition p-1 rounded-lg touch-manipulation"
+              className="text-zinc-500 hover:text-zinc-300 disabled:opacity-30 transition min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg touch-manipulation"
               title="Close"
+              aria-label="Close dialog"
             >
               <X className="w-5 h-5" />
             </button>

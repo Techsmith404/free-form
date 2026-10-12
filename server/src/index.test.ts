@@ -336,6 +336,273 @@ describe('Free Form Backend Core', () => {
     const itemsWithConflictCopy = db.prepare("SELECT * FROM items WHERE title LIKE '%(Conflict Copy)%' OR title = ?").all(conflict.conflict_title);
     expect(itemsWithConflictCopy.length).toBeGreaterThan(0);
   });
+
+  it('should support trash recovery loop (soft-delete, restore-all, and empty trash)', async () => {
+    const { itemRoutes } = await import('./routes/items.js');
+    const fastify = (await import('fastify')).default();
+    await fastify.register(itemRoutes);
+
+    const now = new Date().toISOString();
+    const item1Id = `item-trash-1-${nanoid()}`;
+    const item2Id = `item-trash-2-${nanoid()}`;
+
+    // Create 2 items
+    db.prepare(`
+      INSERT INTO items (id, title, type, content, is_archived, created_at, updated_at)
+      VALUES (?, ?, 'note', 'Trash content 1', 0, ?, ?),
+             (?, ?, 'note', 'Trash content 2', 0, ?, ?)
+    `).run(item1Id, 'Trash Note 1', now, now, item2Id, 'Trash Note 2', now, now);
+
+    // Soft delete item 1
+    const delRes1 = await fastify.inject({
+      method: 'DELETE',
+      url: `/api/items/${item1Id}`
+    });
+    expect(delRes1.statusCode).toBe(200);
+    expect(JSON.parse(delRes1.body).archived).toBe(true);
+
+    const checkArchived = db.prepare('SELECT is_archived FROM items WHERE id = ?').get(item1Id) as any;
+    expect(checkArchived.is_archived).toBe(1);
+
+    // Soft delete item 2
+    await fastify.inject({
+      method: 'DELETE',
+      url: `/api/items/${item2Id}`
+    });
+
+    // Test restore-all
+    const restoreRes = await fastify.inject({
+      method: 'POST',
+      url: '/api/items/trash/restore-all'
+    });
+    expect(restoreRes.statusCode).toBe(200);
+    const restoreData = JSON.parse(restoreRes.body);
+    expect(restoreData.success).toBe(true);
+    expect(restoreData.count).toBeGreaterThanOrEqual(2);
+
+    const checkRestored = db.prepare('SELECT is_archived FROM items WHERE id = ?').get(item1Id) as any;
+    expect(checkRestored.is_archived).toBe(0);
+
+    // Move item1 back to trash and test empty-trash
+    await fastify.inject({
+      method: 'DELETE',
+      url: `/api/items/${item1Id}`
+    });
+
+    const emptyRes = await fastify.inject({
+      method: 'POST',
+      url: '/api/items/trash/empty'
+    });
+    expect(emptyRes.statusCode).toBe(200);
+    const emptyData = JSON.parse(emptyRes.body);
+    expect(emptyData.success).toBe(true);
+    expect(emptyData.count).toBeGreaterThanOrEqual(1);
+
+    const checkPurged = db.prepare('SELECT * FROM items WHERE id = ?').get(item1Id);
+    expect(checkPurged).toBeUndefined();
+  });
+
+  it('should return items with attached tags via single json_group_array query', async () => {
+    const { itemRoutes } = await import('./routes/items.js');
+    const fastify = (await import('fastify')).default();
+    await fastify.register(itemRoutes);
+
+    const itemTaggedId = `item-tagged-${nanoid()}`;
+    const tag1Id = `tag-${nanoid()}`;
+    const tag2Id = `tag-${nanoid()}`;
+    const now = new Date().toISOString();
+
+    db.prepare('INSERT INTO items (id, title, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(
+      itemTaggedId,
+      'Tagged Note',
+      'note',
+      now,
+      now
+    );
+
+    db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(tag1Id, `science-${nanoid()}`, '#3b82f6');
+    db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(tag2Id, `astronomy-${nanoid()}`, '#10b981');
+
+    db.prepare('INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)').run(itemTaggedId, tag1Id);
+    db.prepare('INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)').run(itemTaggedId, tag2Id);
+
+    const res = await fastify.inject({
+      method: 'GET',
+      url: '/api/items'
+    });
+    expect(res.statusCode).toBe(200);
+    const items = JSON.parse(res.body);
+    const fetched = items.find((i: any) => i.id === itemTaggedId);
+    expect(fetched).toBeDefined();
+    expect(Array.isArray(fetched.tags)).toBe(true);
+    expect(fetched.tags.length).toBe(2);
+    expect(fetched.tags.map((t: any) => t.id).sort()).toEqual([tag1Id, tag2Id].sort());
+
+    const singleRes = await fastify.inject({
+      method: 'GET',
+      url: `/api/items/${itemTaggedId}`
+    });
+    expect(singleRes.statusCode).toBe(200);
+    const singleItem = JSON.parse(singleRes.body);
+    expect(Array.isArray(singleItem.tags)).toBe(true);
+    expect(singleItem.tags.length).toBe(2);
+  });
+
+  it('should perform full-text search with BM25 ranking and snippet highlights via SQLite FTS5', async () => {
+    const { itemRoutes } = await import('./routes/items.js');
+    const fastify = (await import('fastify')).default();
+    await fastify.register(itemRoutes);
+
+    const ftsItemId = `item-fts-${nanoid()}`;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO items (id, title, content, type, is_archived, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 0, ?, ?)
+    `).run(
+      ftsItemId,
+      'Mission Telemetry Protocol',
+      'The spacecraft transponder frequency is configured for deep interstellar relay communications.',
+      'note',
+      now,
+      now
+    );
+
+    // Search by stem/keyword "interstellar"
+    const searchRes = await fastify.inject({
+      method: 'GET',
+      url: '/api/items?search=interstellar'
+    });
+    expect(searchRes.statusCode).toBe(200);
+    const results = JSON.parse(searchRes.body);
+    const matched = results.find((r: any) => r.id === ftsItemId);
+    expect(matched).toBeDefined();
+    expect(matched.search_snippet).toBeDefined();
+    expect(matched.search_snippet).toContain('<mark class="ff-search-hl">interstellar</mark>');
+    expect(matched.search_rank).toBeDefined();
+    expect(typeof matched.search_rank).toBe('number');
+
+    // Clean up test item
+    db.prepare('DELETE FROM items WHERE id = ?').run(ftsItemId);
+  });
+
+  it('should execute batch-update, batch-move, batch-tag, and batch-delete in atomic transactions', async () => {
+    const { itemRoutes } = await import('./routes/items.js');
+    const fastify = (await import('fastify')).default();
+    await fastify.register(itemRoutes);
+
+    const id1 = `item-batch-1-${nanoid()}`;
+    const id2 = `item-batch-2-${nanoid()}`;
+    const now = new Date().toISOString();
+
+    // Create 2 test items
+    db.prepare(`
+      INSERT INTO items (id, title, content, type, is_archived, created_at, updated_at)
+      VALUES (?, ?, ?, 'note', 0, ?, ?), (?, ?, ?, 'note', 0, ?, ?)
+    `).run(id1, 'Batch Item 1', 'Content 1', now, now, id2, 'Batch Item 2', 'Content 2', now, now);
+
+    // 1. Batch update
+    const updateRes = await fastify.inject({
+      method: 'POST',
+      url: '/api/items/batch-update',
+      payload: {
+        ids: [id1, id2],
+        updates: { priority: 'high', is_favorite: 1 }
+      }
+    });
+    expect(updateRes.statusCode).toBe(200);
+    const updateData = JSON.parse(updateRes.body);
+    expect(updateData.count).toBe(2);
+
+    const item1Row = db.prepare('SELECT * FROM items WHERE id = ?').get(id1) as any;
+    expect(item1Row.priority).toBe('high');
+    expect(item1Row.is_favorite).toBe(1);
+
+    // 2. Batch move
+    const nbId = `nb-batch-${nanoid()}`;
+    db.prepare('INSERT INTO notebooks (id, name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(
+      nbId,
+      'Batch Notebook',
+      '#22c55e',
+      now,
+      now
+    );
+
+    const moveRes = await fastify.inject({
+      method: 'POST',
+      url: '/api/items/batch-move',
+      payload: {
+        ids: [id1, id2],
+        notebook_id: nbId
+      }
+    });
+    expect(moveRes.statusCode).toBe(200);
+    const moveData = JSON.parse(moveRes.body);
+    expect(moveData.count).toBe(2);
+
+    const item2Row = db.prepare('SELECT * FROM items WHERE id = ?').get(id2) as any;
+    expect(item2Row.notebook_id).toBe(nbId);
+
+    // 3. Batch tag
+    const tagId = `tag-batch-${nanoid()}`;
+    db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(tagId, 'project-batch', '#3b82f6');
+
+    const tagRes = await fastify.inject({
+      method: 'POST',
+      url: '/api/items/batch-tag',
+      payload: {
+        ids: [id1, id2],
+        tag_ids: [tagId],
+        action: 'add'
+      }
+    });
+    expect(tagRes.statusCode).toBe(200);
+    const tagData = JSON.parse(tagRes.body);
+    expect(tagData.count).toBe(2);
+
+    const tagsFor1 = db.prepare('SELECT * FROM item_tags WHERE item_id = ?').all(id1);
+    expect(tagsFor1.length).toBe(1);
+
+    // 4. Batch delete (soft archive)
+    const deleteRes = await fastify.inject({
+      method: 'POST',
+      url: '/api/items/batch-delete',
+      payload: {
+        ids: [id1, id2],
+        permanent: false
+      }
+    });
+    expect(deleteRes.statusCode).toBe(200);
+    const deleteData = JSON.parse(deleteRes.body);
+    expect(deleteData.count).toBe(2);
+    expect(deleteData.archived).toBe(true);
+
+    const archivedItem1 = db.prepare('SELECT is_archived FROM items WHERE id = ?').get(id1) as any;
+    expect(archivedItem1.is_archived).toBe(1);
+
+    // 5. Batch delete (permanent purge)
+    const purgeRes = await fastify.inject({
+      method: 'POST',
+      url: '/api/items/batch-delete',
+      payload: {
+        ids: [id1, id2],
+        permanent: true
+      }
+    });
+    expect(purgeRes.statusCode).toBe(200);
+    const purgeData = JSON.parse(purgeRes.body);
+    expect(purgeData.count).toBe(2);
+    expect(purgeData.permanent).toBe(true);
+
+    const purgedItem1 = db.prepare('SELECT * FROM items WHERE id = ?').get(id1);
+    expect(purgedItem1).toBeUndefined();
+
+    // Clean up test notebook & tag
+    db.prepare('DELETE FROM notebooks WHERE id = ?').run(nbId);
+    db.prepare('DELETE FROM tags WHERE id = ?').run(tagId);
+  });
 });
+
+
 
 

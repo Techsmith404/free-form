@@ -2,10 +2,23 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import crypto from 'crypto';
 import { generateMarkdownFromForm } from '../services/markdown.js';
+import { syncItemLinks, getBacklinks, getOutgoingLinks } from '../services/links.js';
 import { FormTemplate, ItemType } from '../types/index.js';
 
+function formatFtsQuery(q: string): string {
+  const tokens = q.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return '';
+  return tokens
+    .map((t) => {
+      const cleaned = t.replace(/["*^:()\-]/g, '');
+      return cleaned ? `"${cleaned}"*` : '';
+    })
+    .filter(Boolean)
+    .join(' ');
+}
+
 export async function itemRoutes(fastify: FastifyInstance) {
-  // List items with filters
+  // List items with filters and optional FTS5 full-text search
   fastify.get('/api/items', async (request) => {
     const userId = (request as any).user?.id;
     const query = request.query as {
@@ -18,68 +31,150 @@ export async function itemRoutes(fastify: FastifyInstance) {
       tag?: string;
     };
 
-    let sql = `
-      SELECT 
-        i.*,
-        n.name as notebook_name,
-        n.color as notebook_color,
-        n.hide_from_all as notebook_hide_from_all
-      FROM items i
-      LEFT JOIN notebooks n ON i.notebook_id = n.id
-      WHERE 1=1
-    `;
-    const params: any[] = [];
+    const rawSearch = query.search?.trim();
+    const ftsQuery = rawSearch ? formatFtsQuery(rawSearch) : '';
 
-    if (userId) {
-      sql += ` AND (i.user_id = ? OR i.user_id IS NULL OR i.id IN (SELECT item_id FROM item_shares WHERE shared_with_user_id = ?))`;
-      params.push(userId, userId);
-    }
+    let rows: any[] = [];
+    let usedFts = false;
 
-    // Filter by archived status (default to active items, is_archived = 0)
-    if (query.is_archived === '1') {
-      sql += ` AND i.is_archived = 1`;
-    } else {
-      sql += ` AND i.is_archived = 0`;
-    }
+    if (ftsQuery) {
+      try {
+        let ftsSql = `
+          SELECT 
+            i.*,
+            n.name as notebook_name,
+            n.color as notebook_color,
+            n.hide_from_all as notebook_hide_from_all,
+            bm25(items_fts, 5.0, 1.0) as search_rank,
+            snippet(items_fts, -1, '<mark class="ff-search-hl">', '</mark>', '...', 24) as search_snippet,
+            COALESCE((
+              SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
+              FROM item_tags it
+              JOIN tags t ON it.tag_id = t.id
+              WHERE it.item_id = i.id
+            ), '[]') as tags_json
+          FROM items_fts
+          JOIN items i ON items_fts.item_id = i.id
+          LEFT JOIN notebooks n ON i.notebook_id = n.id
+          WHERE items_fts MATCH ?
+        `;
+        const ftsParams: any[] = [ftsQuery];
 
-    if (query.notebook_id) {
-      if (query.notebook_id === 'uncategorized') {
-        sql += ` AND i.notebook_id IS NULL`;
-      } else {
-        sql += ` AND i.notebook_id = ?`;
-        params.push(query.notebook_id);
+        if (userId) {
+          ftsSql += ` AND (i.user_id = ? OR i.user_id IS NULL OR i.id IN (SELECT item_id FROM item_shares WHERE shared_with_user_id = ?))`;
+          ftsParams.push(userId, userId);
+        }
+
+        if (query.is_archived === '1') {
+          ftsSql += ` AND i.is_archived = 1`;
+        } else {
+          ftsSql += ` AND i.is_archived = 0`;
+        }
+
+        if (query.notebook_id) {
+          if (query.notebook_id === 'uncategorized') {
+            ftsSql += ` AND i.notebook_id IS NULL`;
+          } else {
+            ftsSql += ` AND i.notebook_id = ?`;
+            ftsParams.push(query.notebook_id);
+          }
+        } else if (query.include_hidden !== '1') {
+          ftsSql += ` AND (i.hide_from_all = 0 OR i.hide_from_all IS NULL) AND (n.hide_from_all = 0 OR n.hide_from_all IS NULL)`;
+        }
+
+        if (query.type) {
+          ftsSql += ` AND i.type = ?`;
+          ftsParams.push(query.type);
+        }
+
+        if (query.is_favorite === '1') {
+          ftsSql += ` AND i.is_favorite = 1`;
+        }
+
+        if (query.tag) {
+          ftsSql += ` AND i.id IN (SELECT item_id FROM item_tags JOIN tags ON item_tags.tag_id = tags.id WHERE tags.name = ?)`;
+          ftsParams.push(query.tag);
+        }
+
+        ftsSql += ` ORDER BY i.is_pinned DESC, search_rank ASC, i.updated_at DESC`;
+
+        rows = db.prepare(ftsSql).all(...ftsParams) as any[];
+        usedFts = true;
+      } catch {
+        usedFts = false;
       }
-    } else if (query.include_hidden !== '1') {
-      // Global feed: hide items flagged hide_from_all or belonging to a hidden notebook
-      sql += ` AND (i.hide_from_all = 0 OR i.hide_from_all IS NULL) AND (n.hide_from_all = 0 OR n.hide_from_all IS NULL)`;
     }
 
-    if (query.type) {
-      sql += ` AND i.type = ?`;
-      params.push(query.type);
+    if (!usedFts) {
+      let sql = `
+        SELECT 
+          i.*,
+          n.name as notebook_name,
+          n.color as notebook_color,
+          n.hide_from_all as notebook_hide_from_all,
+          COALESCE((
+            SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
+            FROM item_tags it
+            JOIN tags t ON it.tag_id = t.id
+            WHERE it.item_id = i.id
+          ), '[]') as tags_json
+        FROM items i
+        LEFT JOIN notebooks n ON i.notebook_id = n.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (userId) {
+        sql += ` AND (i.user_id = ? OR i.user_id IS NULL OR i.id IN (SELECT item_id FROM item_shares WHERE shared_with_user_id = ?))`;
+        params.push(userId, userId);
+      }
+
+      // Filter by archived status (default to active items, is_archived = 0)
+      if (query.is_archived === '1') {
+        sql += ` AND i.is_archived = 1`;
+      } else {
+        sql += ` AND i.is_archived = 0`;
+      }
+
+      if (query.notebook_id) {
+        if (query.notebook_id === 'uncategorized') {
+          sql += ` AND i.notebook_id IS NULL`;
+        } else {
+          sql += ` AND i.notebook_id = ?`;
+          params.push(query.notebook_id);
+        }
+      } else if (query.include_hidden !== '1') {
+        // Global feed: hide items flagged hide_from_all or belonging to a hidden notebook
+        sql += ` AND (i.hide_from_all = 0 OR i.hide_from_all IS NULL) AND (n.hide_from_all = 0 OR n.hide_from_all IS NULL)`;
+      }
+
+      if (query.type) {
+        sql += ` AND i.type = ?`;
+        params.push(query.type);
+      }
+
+      if (query.is_favorite === '1') {
+        sql += ` AND i.is_favorite = 1`;
+      }
+
+      if (rawSearch) {
+        const term = `%${rawSearch}%`;
+        sql += ` AND (i.title LIKE ? OR i.content LIKE ?)`;
+        params.push(term, term);
+      }
+
+      if (query.tag) {
+        sql += ` AND i.id IN (SELECT item_id FROM item_tags JOIN tags ON item_tags.tag_id = tags.id WHERE tags.name = ?)`;
+        params.push(query.tag);
+      }
+
+      // Sort: Pinned first, then newest updated first
+      sql += ` ORDER BY i.is_pinned DESC, i.updated_at DESC`;
+
+      rows = db.prepare(sql).all(...params) as any[];
     }
 
-    if (query.is_favorite === '1') {
-      sql += ` AND i.is_favorite = 1`;
-    }
-
-    if (query.search && query.search.trim()) {
-      const term = `%${query.search.trim()}%`;
-      sql += ` AND (i.title LIKE ? OR i.content LIKE ?)`;
-      params.push(term, term);
-    }
-
-    if (query.tag) {
-      sql += ` AND i.id IN (SELECT item_id FROM item_tags JOIN tags ON item_tags.tag_id = tags.id WHERE tags.name = ?)`;
-      params.push(query.tag);
-    }
-
-    // Sort: Pinned first, then newest updated first
-    sql += ` ORDER BY i.is_pinned DESC, i.updated_at DESC`;
-
-    const rows = db.prepare(sql).all(...params) as any[];
-
-    // Parse metadata JSON and fetch tags
+    // Parse metadata JSON and tags JSON (zero N+1 queries)
     const items = rows.map((r) => {
       let meta = {};
       try {
@@ -88,16 +183,21 @@ export async function itemRoutes(fastify: FastifyInstance) {
         meta = {};
       }
 
-      const tags = db.prepare(`
-        SELECT t.* FROM tags t
-        JOIN item_tags it ON t.id = it.tag_id
-        WHERE it.item_id = ?
-      `).all(r.id);
+      let tags = [];
+      try {
+        tags = JSON.parse(r.tags_json || '[]');
+      } catch {
+        tags = [];
+      }
+
+      const { tags_json, ...itemData } = r;
 
       return {
-        ...r,
+        ...itemData,
         metadata: meta,
-        tags
+        tags,
+        ...(r.search_snippet ? { search_snippet: r.search_snippet } : {}),
+        ...(r.search_rank !== undefined ? { search_rank: r.search_rank } : {})
       };
     });
 
@@ -112,7 +212,13 @@ export async function itemRoutes(fastify: FastifyInstance) {
         i.*,
         n.name as notebook_name,
         n.color as notebook_color,
-        n.hide_from_all as notebook_hide_from_all
+        n.hide_from_all as notebook_hide_from_all,
+        COALESCE((
+          SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
+          FROM item_tags it
+          JOIN tags t ON it.tag_id = t.id
+          WHERE it.item_id = i.id
+        ), '[]') as tags_json
       FROM items i
       LEFT JOIN notebooks n ON i.notebook_id = n.id
       WHERE i.id = ?
@@ -129,14 +235,17 @@ export async function itemRoutes(fastify: FastifyInstance) {
       meta = {};
     }
 
-    const tags = db.prepare(`
-      SELECT t.* FROM tags t
-      JOIN item_tags it ON t.id = it.tag_id
-      WHERE it.item_id = ?
-    `).all(id);
+    let tags = [];
+    try {
+      tags = JSON.parse(row.tags_json || '[]');
+    } catch {
+      tags = [];
+    }
+
+    const { tags_json, ...itemData } = row;
 
     return {
-      ...row,
+      ...itemData,
       metadata: meta,
       tags
     };
@@ -234,6 +343,8 @@ export async function itemRoutes(fastify: FastifyInstance) {
       }
     }
 
+    syncItemLinks(id, content);
+
     const created = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
     return reply.code(201).send({
       ...created,
@@ -301,11 +412,31 @@ export async function itemRoutes(fastify: FastifyInstance) {
       id
     );
 
+    syncItemLinks(id, nextContent);
+
     const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
     return {
       ...updated,
       metadata: JSON.parse(updated.metadata || '{}')
     };
+  });
+
+  // Linked References: items whose [[wikilinks]] point at this item's title
+  fastify.get('/api/items/:id/backlinks', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as any).user?.id;
+    const exists = db.prepare('SELECT id FROM items WHERE id = ?').get(id);
+    if (!exists) return reply.code(404).send({ error: 'Item not found' });
+    return getBacklinks(id, userId);
+  });
+
+  // Outgoing wikilinks of an item, each resolved to a target item when one exists
+  fastify.get('/api/items/:id/links', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as any).user?.id;
+    const exists = db.prepare('SELECT id FROM items WHERE id = ?').get(id);
+    if (!exists) return reply.code(404).send({ error: 'Item not found' });
+    return getOutgoingLinks(id, userId);
   });
 
   // Delete item (permanent deletion or purge)
@@ -325,6 +456,188 @@ export async function itemRoutes(fastify: FastifyInstance) {
     const now = new Date().toISOString();
     db.prepare('UPDATE items SET is_archived = 1, updated_at = ? WHERE id = ?').run(now, id);
     return { success: true, id, archived: true };
+  });
+
+  // Empty trash (permanently delete all archived items)
+  fastify.post('/api/items/trash/empty', async (request) => {
+    const userId = (request as any).user?.id;
+    let result;
+    if (userId) {
+      result = db.prepare('DELETE FROM items WHERE is_archived = 1 AND (user_id = ? OR user_id IS NULL)').run(userId);
+    } else {
+      result = db.prepare('DELETE FROM items WHERE is_archived = 1').run();
+    }
+    return { success: true, count: result.changes };
+  });
+
+  // Restore all trash (restore all archived items)
+  fastify.post('/api/items/trash/restore-all', async (request) => {
+    const userId = (request as any).user?.id;
+    const now = new Date().toISOString();
+    let result;
+    if (userId) {
+      result = db.prepare('UPDATE items SET is_archived = 0, updated_at = ? WHERE is_archived = 1 AND (user_id = ? OR user_id IS NULL)').run(now, userId);
+    } else {
+      result = db.prepare('UPDATE items SET is_archived = 0, updated_at = ? WHERE is_archived = 1').run(now);
+    }
+    return { success: true, count: result.changes };
+  });
+
+  // Batch update items
+  fastify.post('/api/items/batch-update', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    const { ids, updates } = (request.body as any) || {};
+    if (!Array.isArray(ids) || ids.length === 0 || !updates || typeof updates !== 'object') {
+      return reply.code(400).send({ error: 'ids array and updates object are required' });
+    }
+
+    const now = new Date().toISOString();
+    const updateClauses: string[] = ['updated_at = ?'];
+    const baseParams: any[] = [now];
+
+    if (updates.notebook_id !== undefined) {
+      updateClauses.push('notebook_id = ?');
+      baseParams.push(updates.notebook_id);
+    }
+    if (updates.priority !== undefined) {
+      updateClauses.push('priority = ?');
+      baseParams.push(updates.priority);
+    }
+    if (updates.is_favorite !== undefined) {
+      updateClauses.push('is_favorite = ?');
+      baseParams.push(updates.is_favorite ? 1 : 0);
+    }
+    if (updates.is_pinned !== undefined) {
+      updateClauses.push('is_pinned = ?');
+      baseParams.push(updates.is_pinned ? 1 : 0);
+    }
+    if (updates.is_archived !== undefined) {
+      updateClauses.push('is_archived = ?');
+      baseParams.push(updates.is_archived ? 1 : 0);
+    }
+    if (updates.hide_from_all !== undefined) {
+      updateClauses.push('hide_from_all = ?');
+      baseParams.push(updates.hide_from_all ? 1 : 0);
+    }
+
+    const sql = `
+      UPDATE items SET ${updateClauses.join(', ')}
+      WHERE id = ? ${userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''}
+    `;
+    const stmt = db.prepare(sql);
+
+    let count = 0;
+    const runTransaction = db.transaction(() => {
+      for (const id of ids) {
+        const params = userId ? [...baseParams, id, userId] : [...baseParams, id];
+        const res = stmt.run(...params);
+        count += res.changes;
+      }
+    });
+
+    runTransaction();
+    return { success: true, count };
+  });
+
+  // Batch delete items (soft archive or permanent purge)
+  fastify.post('/api/items/batch-delete', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    const { ids, permanent } = (request.body as any) || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return reply.code(400).send({ error: 'ids array is required' });
+    }
+
+    let count = 0;
+    if (permanent) {
+      const sql = `DELETE FROM items WHERE id = ? ${userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''}`;
+      const stmt = db.prepare(sql);
+      const runTransaction = db.transaction(() => {
+        for (const id of ids) {
+          const res = userId ? stmt.run(id, userId) : stmt.run(id);
+          count += res.changes;
+        }
+      });
+      runTransaction();
+      return { success: true, count, permanent: true };
+    } else {
+      const now = new Date().toISOString();
+      const sql = `UPDATE items SET is_archived = 1, updated_at = ? WHERE id = ? ${userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''}`;
+      const stmt = db.prepare(sql);
+      const runTransaction = db.transaction(() => {
+        for (const id of ids) {
+          const res = userId ? stmt.run(now, id, userId) : stmt.run(now, id);
+          count += res.changes;
+        }
+      });
+      runTransaction();
+      return { success: true, count, archived: true };
+    }
+  });
+
+  // Batch move items to notebook
+  fastify.post('/api/items/batch-move', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    const { ids, notebook_id } = (request.body as any) || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return reply.code(400).send({ error: 'ids array is required' });
+    }
+    const targetNotebookId = notebook_id || null;
+    const now = new Date().toISOString();
+    const sql = `UPDATE items SET notebook_id = ?, updated_at = ? WHERE id = ? ${userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''}`;
+    const stmt = db.prepare(sql);
+
+    let count = 0;
+    const runTransaction = db.transaction(() => {
+      for (const id of ids) {
+        const res = userId ? stmt.run(targetNotebookId, now, id, userId) : stmt.run(targetNotebookId, now, id);
+        count += res.changes;
+      }
+    });
+
+    runTransaction();
+    return { success: true, count };
+  });
+
+  // Batch tag items (add or remove)
+  fastify.post('/api/items/batch-tag', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    const { ids, tag_ids, action } = (request.body as any) || {};
+    if (!Array.isArray(ids) || ids.length === 0 || !Array.isArray(tag_ids) || tag_ids.length === 0) {
+      return reply.code(400).send({ error: 'ids and tag_ids arrays are required' });
+    }
+
+    const addStmt = db.prepare(`
+      INSERT OR IGNORE INTO item_tags (item_id, tag_id)
+      SELECT ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM items WHERE id = ? ${userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''}
+      )
+    `);
+    const removeStmt = db.prepare(`
+      DELETE FROM item_tags
+      WHERE item_id = ? AND tag_id = ?
+      AND EXISTS (
+        SELECT 1 FROM items WHERE id = ? ${userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''}
+      )
+    `);
+
+    let count = 0;
+    const runTransaction = db.transaction(() => {
+      for (const id of ids) {
+        for (const tagId of tag_ids) {
+          if (action === 'remove') {
+            const res = userId ? removeStmt.run(id, tagId, id, userId) : removeStmt.run(id, tagId, id);
+            count += res.changes;
+          } else {
+            const res = userId ? addStmt.run(id, tagId, id, userId) : addStmt.run(id, tagId, id);
+            count += res.changes;
+          }
+        }
+      }
+    });
+
+    runTransaction();
+    return { success: true, count };
   });
 
   // Counter actions: increment, decrement, reset

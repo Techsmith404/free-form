@@ -17,8 +17,10 @@ import { reminderRoutes } from './routes/reminders.js';
 import { settingsRoutes } from './routes/settings.js';
 import { syncRoutes } from './routes/sync.js';
 import { conflictsRoutes } from './routes/conflicts.js';
+import { healthRoutes } from './routes/health.js';
 import { addClient, startRealtimeTicker, stopRealtimeTicker } from './services/realtime.js';
 
+import crypto from 'crypto';
 import fastifyCookie from '@fastify/cookie';
 import { hashToken } from './services/auth.js';
 import { authRoutes } from './routes/auth.js';
@@ -83,6 +85,47 @@ async function main() {
       }
     }
 
+    // Check reverse-proxy forward auth headers if TRUST_FORWARD_AUTH is enabled
+    const trustForwardAuth = process.env.TRUST_FORWARD_AUTH === 'true';
+    if (trustForwardAuth && !resolvedUser) {
+      const forwardUserHeader =
+        (request.headers['remote-user'] as string) ||
+        (request.headers['x-forwarded-user'] as string) ||
+        (request.headers['remote-preferred-username'] as string);
+
+      if (forwardUserHeader && typeof forwardUserHeader === 'string' && forwardUserHeader.trim()) {
+        const username = forwardUserHeader.trim();
+        const forwardEmail =
+          (request.headers['remote-email'] as string) ||
+          (request.headers['x-forwarded-email'] as string) ||
+          '';
+
+        let userRow = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+        if (!userRow) {
+          const userCount = (db.prepare('SELECT count(*) as c FROM users').get() as any)?.c || 0;
+          const role = userCount === 0 ? 'owner' : 'member';
+          const newUserId = `usr-${crypto.randomBytes(8).toString('hex')}`;
+          const now = new Date().toISOString();
+          db.prepare(`
+            INSERT INTO users (id, username, email, password_hash, role, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(newUserId, username, forwardEmail || null, 'FORWARD_AUTH_NO_PASSWORD', role, now, now);
+          userRow = db.prepare('SELECT * FROM users WHERE id = ?').get(newUserId) as any;
+        }
+
+        if (userRow) {
+          resolvedUser = {
+            id: userRow.id,
+            username: userRow.username,
+            email: userRow.email,
+            role: userRow.role,
+            created_at: userRow.created_at,
+            updated_at: userRow.updated_at
+          };
+        }
+      }
+    }
+
     // Default mock user if auth is disabled for single-user mode
     if (!resolvedUser && !authRequired) {
       resolvedUser = {
@@ -100,7 +143,8 @@ async function main() {
     const pathname = request.url.split('?')[0];
     const isPublic =
       pathname.startsWith('/api/auth') ||
-      pathname === '/api/health' ||
+      pathname.startsWith('/api/health') ||
+      pathname === '/api/metrics' ||
       pathname === '/api/ws' ||
       !pathname.startsWith('/api');
 
@@ -116,9 +160,10 @@ async function main() {
     decorateReply: false
   });
 
-  // WebSocket real-time broadcast endpoint
+  // WebSocket real-time broadcast endpoint with user partition
   app.get('/api/ws', { websocket: true }, (socket, req) => {
-    addClient(socket);
+    const userId = (req as any).user?.id || 'usr-default';
+    addClient(socket, userId);
   });
 
   // 3. API Routes
@@ -134,16 +179,10 @@ async function main() {
   await app.register(settingsRoutes);
   await app.register(syncRoutes);
   await app.register(conflictsRoutes);
+  await app.register(healthRoutes);
 
   // Start background timer/reminder ticker
   startRealtimeTicker();
-
-  // Health check endpoint
-  app.get('/api/health', async () => ({
-    status: 'ok',
-    app: 'Free Form',
-    timestamp: new Date().toISOString()
-  }));
 
   // 4. In production, serve the built Vite SPA static files
   const clientDistDir = path.resolve(process.cwd(), '../client/dist');

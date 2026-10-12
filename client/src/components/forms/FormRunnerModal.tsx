@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FormTemplate, Notebook, Item } from '../../types/index.js';
 import { createItem, updateItem, previewTemplateMarkdown, uploadFile } from '../../api/index.js';
 import { SignaturePad } from './SignaturePad.js';
@@ -24,6 +24,7 @@ interface FormRunnerModalProps {
   notebooks: Notebook[];
   defaultNotebookId?: string | null;
   existingItem?: Item | null;
+  isRepeatLog?: boolean;
   onClose: () => void;
   onSaved: (item: Item) => void;
 }
@@ -33,13 +34,31 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
   notebooks,
   defaultNotebookId,
   existingItem,
+  isRepeatLog = false,
   onClose,
   onSaved
 }) => {
   const initialValues = existingItem?.metadata?.values || {};
-  const [values, setValues] = useState<Record<string, any>>(initialValues);
+  const prepopulatedValues = React.useMemo(() => {
+    if (!isRepeatLog) return initialValues;
+    const copied = { ...initialValues };
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowTimeStr = new Date().toTimeString().slice(0, 5);
+    (template.fields_schema || []).forEach((field) => {
+      if (field.type === 'date') {
+        copied[field.id] = todayStr;
+      } else if (field.type === 'time') {
+        copied[field.id] = nowTimeStr;
+      }
+    });
+    return copied;
+  }, [initialValues, isRepeatLog, template.fields_schema]);
+
+  const [values, setValues] = useState<Record<string, any>>(prepopulatedValues);
   const [title, setTitle] = useState<string>(
-    existingItem?.title || `${template.name} - ${new Date().toLocaleDateString()}`
+    isRepeatLog
+      ? `${template.name} - ${new Date().toLocaleDateString()}`
+      : existingItem?.title || `${template.name} - ${new Date().toLocaleDateString()}`
   );
   const [notebookId, setNotebookId] = useState<string | null>(
     existingItem?.notebook_id ?? defaultNotebookId ?? template.default_notebook_id ?? null
@@ -50,6 +69,82 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
   const [markdownPreview, setMarkdownPreview] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  interface DraftData {
+    title: string;
+    notebookId: string | null;
+    values: Record<string, any>;
+    savedAt: string;
+  }
+
+  const [draftAvailable, setDraftAvailable] = useState<DraftData | null>(null);
+  const [draftRestored, setDraftRestored] = useState<boolean>(false);
+
+  // Check for existing draft on mount (only for new entries)
+  useEffect(() => {
+    if (existingItem) return;
+    try {
+      const saved = localStorage.getItem(`ff_draft_${template.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && parsed.values) {
+          setDraftAvailable(parsed);
+        }
+      }
+    } catch {}
+  }, [template.id, existingItem]);
+
+  // Debounced auto-save in-progress form inputs to localStorage
+  useEffect(() => {
+    if (existingItem) return;
+    // Don't save if there's no title and no values yet
+    if (!title && Object.keys(values).length === 0) return;
+
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          `ff_draft_${template.id}`,
+          JSON.stringify({
+            title,
+            notebookId,
+            values,
+            savedAt: new Date().toISOString()
+          })
+        );
+      } catch (err) {
+        console.warn('Failed to auto-save form draft', err);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [template.id, title, notebookId, values, existingItem]);
+
+  const handleResumeDraft = () => {
+    if (!draftAvailable) return;
+    if (draftAvailable.title) setTitle(draftAvailable.title);
+    if (draftAvailable.notebookId !== undefined) setNotebookId(draftAvailable.notebookId);
+    if (draftAvailable.values) setValues(draftAvailable.values);
+    setDraftRestored(true);
+    setDraftAvailable(null);
+    hapticSuccess();
+  };
+
+  const handleDiscardDraft = () => {
+    try {
+      localStorage.removeItem(`ff_draft_${template.id}`);
+    } catch {}
+    setDraftAvailable(null);
+    hapticTap();
+  };
+
+  const formatDraftTime = (isoString: string) => {
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' on ' + d.toLocaleDateString();
+    } catch {
+      return 'earlier session';
+    }
+  };
 
   // Initialize defaults from template schema
   useEffect(() => {
@@ -147,13 +242,16 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
       };
 
       let saved: Item;
-      if (existingItem) {
+      if (existingItem && !isRepeatLog) {
         saved = await updateItem(existingItem.id, payload);
       } else {
         saved = await createItem(payload);
       }
 
       hapticSuccess();
+      try {
+        localStorage.removeItem(`ff_draft_${template.id}`);
+      } catch {}
       onSaved(saved);
       onClose();
     } catch (err: any) {
@@ -162,6 +260,36 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
       setSaving(false);
     }
   };
+
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSaveRef.current();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSaveRef.current();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 sm:p-6 overflow-hidden">
@@ -174,9 +302,14 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
                 Form Entry
               </span>
               <span className="text-xs text-zinc-400 truncate">{template.name}</span>
+              {isRepeatLog && (
+                <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-md shrink-0">
+                  Repeat Log
+                </span>
+              )}
             </div>
             <h2 className="text-base sm:text-lg font-bold text-zinc-100 mt-0.5">
-              {existingItem ? 'Edit Entry' : 'New Entry'}
+              {isRepeatLog ? 'New Repeated Entry' : existingItem ? 'Edit Entry' : 'New Entry'}
             </h2>
           </div>
 
@@ -219,6 +352,51 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Unsaved Draft Detection Banner */}
+        {draftAvailable && (
+          <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-200 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="truncate">
+                You have an unsaved draft from {formatDraftTime(draftAvailable.savedAt)}.
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleResumeDraft}
+                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-lg text-xs transition active:scale-95"
+              >
+                Resume Draft
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium rounded-lg text-xs transition active:scale-95"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Draft Restored Confirmation Badge */}
+        {draftRestored && !draftAvailable && (
+          <div className="bg-emerald-500/15 border-b border-emerald-500/30 px-4 sm:px-6 py-2 flex items-center justify-between text-xs text-emerald-300 shrink-0">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Draft inputs restored successfully.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDraftRestored(false)}
+              className="text-emerald-400 hover:text-emerald-200 text-xs font-semibold px-2 py-0.5"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="mx-4 sm:mx-6 mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2 shrink-0">
@@ -507,6 +685,7 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
             type="button"
             onClick={handleSave}
             disabled={saving}
+            title="Save Form Note (Ctrl+S / Cmd+Enter)"
             className="flex items-center gap-2 h-11 px-5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-brand-500/20 touch-manipulation"
           >
             <Save className="w-4 h-4" />

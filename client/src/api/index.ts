@@ -440,6 +440,51 @@ export async function fetchItem(id: string): Promise<Item> {
   return local;
 }
 
+export interface BacklinkItem {
+  id: string;
+  title: string;
+  type: string;
+  notebook_id: string | null;
+  notebook_name: string | null;
+  updated_at: string;
+}
+
+export async function fetchItemBacklinks(id: string): Promise<BacklinkItem[]> {
+  try {
+    const res = await fetchWithTimeout(`${apiUrl('/items')}/${id}/backlinks`, {}, 2500);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {}
+
+  // Offline fallback via IndexedDB
+  try {
+    const target = await dbGetItem(id);
+    if (!target || !target.title) return [];
+    const allItems = await dbGetItems();
+    const notebooks = await dbGetNotebooks();
+    const nbMap = new Map(notebooks.map((n) => [n.id, n.name]));
+    const cleanTargetTitle = target.title.trim().toLowerCase();
+
+    return allItems
+      .filter((it) => {
+        if (it.id === id || it.is_archived) return false;
+        if (!it.content) return false;
+        return it.content.toLowerCase().includes(`[[${cleanTargetTitle}`);
+      })
+      .map((it) => ({
+        id: it.id,
+        title: it.title,
+        type: it.type,
+        notebook_id: it.notebook_id ?? null,
+        notebook_name: it.notebook_id ? nbMap.get(it.notebook_id) || null : null,
+        updated_at: it.updated_at
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export async function createItem(data: Partial<Item>): Promise<Item> {
   const now = new Date().toISOString();
   const id = data.id || generateUUID();
@@ -520,6 +565,162 @@ export async function deleteItem(id: string, permanent: boolean = false): Promis
 
   await dbQueueMutation('delete_item', { id, permanent });
   syncService.performSync().catch(() => {});
+}
+
+export async function restoreItem(id: string): Promise<Item> {
+  return updateItem(id, { is_archived: 0 });
+}
+
+export async function emptyTrash(): Promise<{ count: number }> {
+  let count = 0;
+  // 1. Clear locally in IndexedDB
+  const allItems = await dbGetItems();
+  const trashed = allItems.filter((i) => i.is_archived === 1);
+  for (const item of trashed) {
+    await dbDeleteItem(item.id);
+  }
+  count = trashed.length;
+
+  // 2. Clear on server if reachable
+  try {
+    const res = await fetchWithTimeout(apiUrl('/items/trash/empty'), {
+      method: 'POST'
+    }, 3000);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.count === 'number') {
+        count = data.count;
+      }
+    }
+  } catch {}
+
+  syncService.performSync().catch(() => {});
+  return { count };
+}
+
+export async function restoreAllTrash(): Promise<{ count: number }> {
+  let count = 0;
+  const now = new Date().toISOString();
+  // 1. Update locally in IndexedDB
+  const allItems = await dbGetItems();
+  const trashed = allItems.filter((i) => i.is_archived === 1);
+  for (const item of trashed) {
+    item.is_archived = 0;
+    item.updated_at = now;
+    await dbPutItem(item);
+    await dbQueueMutation('update_item', { id: item.id, is_archived: 0 }, item.updated_at);
+  }
+  count = trashed.length;
+
+  // 2. Update on server if reachable
+  try {
+    const res = await fetchWithTimeout(apiUrl('/items/trash/restore-all'), {
+      method: 'POST'
+    }, 3000);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.count === 'number') {
+        count = data.count;
+      }
+    }
+  } catch {}
+
+  syncService.performSync().catch(() => {});
+  return { count };
+}
+
+export async function batchUpdateItems(ids: string[], updates: Partial<Item>): Promise<{ count: number }> {
+  const now = new Date().toISOString();
+  // 1. Update in IndexedDB & queue mutations
+  for (const id of ids) {
+    const existing = await dbGetItem(id);
+    if (existing) {
+      const merged: Item = {
+        ...existing,
+        ...updates,
+        updated_at: now
+      };
+      await dbPutItem(merged);
+      await dbQueueMutation('update_item', { id, ...updates }, existing.updated_at);
+    }
+  }
+
+  // 2. Server call
+  let count = ids.length;
+  try {
+    const res = await fetchWithTimeout(apiUrl('/items/batch-update'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, updates })
+    }, 5000);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.count === 'number') count = data.count;
+    }
+  } catch {}
+
+  syncService.performSync().catch(() => {});
+  return { count };
+}
+
+export async function batchDeleteItems(ids: string[], permanent: boolean = false): Promise<{ count: number }> {
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    if (permanent) {
+      await dbDeleteItem(id);
+    } else {
+      const existing = await dbGetItem(id);
+      if (existing) {
+        existing.is_archived = 1;
+        existing.updated_at = now;
+        await dbPutItem(existing);
+      }
+    }
+    await dbQueueMutation('delete_item', { id, permanent });
+  }
+
+  let count = ids.length;
+  try {
+    const res = await fetchWithTimeout(apiUrl('/items/batch-delete'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, permanent })
+    }, 5000);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.count === 'number') count = data.count;
+    }
+  } catch {}
+
+  syncService.performSync().catch(() => {});
+  return { count };
+}
+
+export async function batchMoveItems(ids: string[], notebook_id: string | null): Promise<{ count: number }> {
+  return batchUpdateItems(ids, { notebook_id });
+}
+
+export async function exportBatchNotes(ids: string[]): Promise<void> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(apiUrl('/export/batch'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ids })
+  });
+
+  if (!res.ok) throw new Error('Failed to export selected notes');
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `free-form-selected-${new Date().toISOString().split('T')[0]}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }
 
 export async function counterAction(
@@ -1126,7 +1327,10 @@ export const api = {
   updateSettings,
   sync,
   fetchConflicts,
-  resolveConflict
+  resolveConflict,
+  restoreItem,
+  emptyTrash,
+  restoreAllTrash
 };
 
 
