@@ -4,6 +4,10 @@
   "private": true,
   "description": "A self-hostable, multi-modal markdown note & form engine web app and PWA",
   "license": "MIT",
+  "type": "module",
+  "bin": {
+    "freeform": "./bin/freeform.js"
+  },
   "workspaces": [
     "packages/*",
     "server",

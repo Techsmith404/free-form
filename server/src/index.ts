@@ -18,6 +18,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { syncRoutes } from './routes/sync.js';
 import { conflictsRoutes } from './routes/conflicts.js';
 import { healthRoutes } from './routes/health.js';
+import { webhookAndTokenRoutes } from './routes/webhooks.js';
 import { addClient, startRealtimeTicker, stopRealtimeTicker } from './services/realtime.js';
 
 import crypto from 'crypto';
@@ -82,6 +83,36 @@ async function main() {
           created_at: sessionRow.created_at,
           updated_at: sessionRow.updated_at
         };
+      } else {
+        // Check if token matches a Personal Access Token (PAT)
+        const patRow = db.prepare(`
+          SELECT p.*, u.id as user_id, u.username, u.email, u.role, u.created_at as u_created_at, u.updated_at as u_updated_at
+          FROM api_tokens p
+          LEFT JOIN users u ON p.user_id = u.id
+          WHERE p.token_hash = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
+        `).get(tokenHash, new Date().toISOString()) as any;
+
+        if (patRow) {
+          if (patRow.user_id) {
+            resolvedUser = {
+              id: patRow.user_id,
+              username: patRow.username,
+              email: patRow.email,
+              role: patRow.role,
+              created_at: patRow.u_created_at,
+              updated_at: patRow.u_updated_at
+            };
+          } else {
+            // Unscoped / system token
+            resolvedUser = {
+              id: 'usr-pat-system',
+              username: patRow.name || 'api-token',
+              role: 'owner',
+              created_at: patRow.created_at,
+              updated_at: patRow.created_at
+            };
+          }
+        }
       }
     }
 
@@ -180,6 +211,7 @@ async function main() {
   await app.register(syncRoutes);
   await app.register(conflictsRoutes);
   await app.register(healthRoutes);
+  await app.register(webhookAndTokenRoutes);
 
   // Start background timer/reminder ticker
   startRealtimeTicker();

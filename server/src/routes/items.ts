@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { generateMarkdownFromForm } from '../services/markdown.js';
 import { syncItemLinks, getBacklinks, getOutgoingLinks } from '../services/links.js';
 import { FormTemplate, ItemType } from '../types/index.js';
+import { dispatchWebhookEvent } from '../services/webhook.js';
 
 function formatFtsQuery(q: string): string {
   const tokens = q.trim().split(/\s+/).filter(Boolean);
@@ -346,10 +347,18 @@ export async function itemRoutes(fastify: FastifyInstance) {
     syncItemLinks(id, content);
 
     const created = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
-    return reply.code(201).send({
+    const itemResponse = {
       ...created,
       metadata: JSON.parse(created.metadata || '{}')
-    });
+    };
+
+    if (type === 'form_entry') {
+      dispatchWebhookEvent('form_entry.submitted', itemResponse, userId);
+    } else {
+      dispatchWebhookEvent('item.created', itemResponse, userId);
+    }
+
+    return reply.code(201).send(itemResponse);
   });
 
   // Update item
@@ -415,10 +424,14 @@ export async function itemRoutes(fastify: FastifyInstance) {
     syncItemLinks(id, nextContent);
 
     const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
-    return {
+    const itemResponse = {
       ...updated,
       metadata: JSON.parse(updated.metadata || '{}')
     };
+
+    dispatchWebhookEvent('item.updated', itemResponse, existing.user_id || (request as any).user?.id);
+
+    return itemResponse;
   });
 
   // Linked References: items whose [[wikilinks]] point at this item's title
@@ -444,17 +457,20 @@ export async function itemRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const query = request.query as { permanent?: string };
 
+    const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
     if (query.permanent === '1') {
       const result = db.prepare('DELETE FROM items WHERE id = ?').run(id);
       if (result.changes === 0) {
         return reply.code(404).send({ error: 'Item not found' });
       }
+      dispatchWebhookEvent('item.deleted', { id, permanent: true }, existing?.user_id || (request as any).user?.id);
       return { success: true, id, permanent: true };
     }
 
     // Soft delete / Move to trash
     const now = new Date().toISOString();
     db.prepare('UPDATE items SET is_archived = 1, updated_at = ? WHERE id = ?').run(now, id);
+    dispatchWebhookEvent('item.deleted', { id, permanent: false, archived: true }, existing?.user_id || (request as any).user?.id);
     return { success: true, id, archived: true };
   });
 
@@ -697,8 +713,10 @@ export async function itemRoutes(fastify: FastifyInstance) {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(historyId, id, appliedDelta, newCount, note || (reset ? 'Reset counter' : ''), now);
 
-    return {
+    const counterResponse = {
       success: true,
+      id,
+      title: item.title,
       count: newCount,
       delta: appliedDelta,
       metadata: meta,
@@ -711,6 +729,10 @@ export async function itemRoutes(fastify: FastifyInstance) {
         created_at: now
       }
     };
+
+    dispatchWebhookEvent('counter.threshold', counterResponse, item.user_id || (request as any).user?.id);
+
+    return counterResponse;
   });
 
   // Get counter history (supports both /counter/history and SSoT-standard /counter-history)

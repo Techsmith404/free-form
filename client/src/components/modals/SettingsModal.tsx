@@ -18,11 +18,32 @@ import {
   MoonStar,
   Minimize2,
   LayoutGrid,
-  Maximize2
+  Maximize2,
+  Key,
+  Webhook as WebhookIcon,
+  Upload,
+  Terminal,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
-import { ThemeMode, AccentColor, NotePriority, AppSettings, DensityMode } from '../../types/index.js';
+import { ThemeMode, AccentColor, NotePriority, AppSettings, DensityMode, ApiToken, Webhook } from '../../types/index.js';
 import { useRealtime } from '../../context/RealtimeContext.js';
-import { getExportUrl, getServerUrl, setServerUrl, apiUrl } from '../../api/index.js';
+import {
+  getExportUrl,
+  getServerUrl,
+  setServerUrl,
+  apiUrl,
+  importObsidianVault,
+  importGoogleKeep,
+  fetchApiTokens,
+  createApiToken,
+  deleteApiToken,
+  fetchWebhooks,
+  createWebhook,
+  updateWebhook,
+  deleteWebhook,
+  testWebhook
+} from '../../api/index.js';
 import { isNative, hapticTap } from '../../services/native.js';
 import { syncService, SyncState } from '../../services/syncService.js';
 import { GitMerge, Database, CheckCircle2 } from 'lucide-react';
@@ -82,12 +103,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const { isConnected, isConnecting, reconnectAttempt, manualReconnect, conflicts, setConflictModalOpen } = useRealtime();
   const [localPriorities, setLocalPriorities] = useState<NotePriority[]>(priorities);
-  const [activeTab, setActiveTab] = useState<'appearance' | 'priorities' | 'system'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'priorities' | 'system' | 'integrations' | 'import'>('appearance');
   const [savedToast, setSavedToast] = useState(false);
   const [serverUrl, setServerUrlInput] = useState(getServerUrl());
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [syncState, setSyncState] = useState<SyncState>(syncService.getState());
+
+  // Section 6 Automation & PAT States
+  const [tokens, setTokens] = useState<ApiToken[]>([]);
+  const [newTokenName, setNewTokenName] = useState('');
+  const [createdTokenRaw, setCreatedTokenRaw] = useState<string | null>(null);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [newWebhookName, setNewWebhookName] = useState('');
+  const [newWebhookUrl, setNewWebhookUrl] = useState('');
+  const [newWebhookEvents, setNewWebhookEvents] = useState('*');
+  const [webhookTestStatus, setWebhookTestStatus] = useState<Record<string, string>>({});
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const obsidianInputRef = React.useRef<HTMLInputElement>(null);
+  const keepInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Load Tokens & Webhooks when opening integrations tab
+  React.useEffect(() => {
+    if (isOpen && activeTab === 'integrations') {
+      fetchApiTokens().then(setTokens).catch(() => {});
+      fetchWebhooks().then(setWebhooks).catch(() => {});
+    }
+  }, [isOpen, activeTab]);
 
   React.useEffect(() => {
     return syncService.subscribe((state) => {
@@ -229,6 +273,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             <Wifi className="w-3.5 h-3.5" />
             <span>Server & Sync</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('integrations')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition touch-manipulation whitespace-nowrap ${
+              activeTab === 'integrations'
+                ? 'bg-zinc-800 text-brand-400 border border-zinc-700 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+            }`}
+          >
+            <WebhookIcon className="w-3.5 h-3.5" />
+            <span>API & Webhooks</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('import')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition touch-manipulation whitespace-nowrap ${
+              activeTab === 'import'
+                ? 'bg-zinc-800 text-brand-400 border border-zinc-700 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+            }`}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Vault Importers</span>
           </button>
         </div>
 
@@ -788,6 +858,379 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="flex items-center justify-between">
                   <span>Storage Mode</span>
                   <span>Self-Hosted Local-First</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: API TOKENS & OUTBOUND WEBHOOKS */}
+          {activeTab === 'integrations' && (
+            <div className="space-y-6">
+              {/* Personal Access Tokens */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wide flex items-center gap-2">
+                      <Key className="w-4 h-4 text-brand-400" />
+                      <span>Personal Access Tokens (PATs)</span>
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Bearer tokens for CLI capture, Alfred/Raycast scripts, iOS Shortcuts, and automation.
+                    </p>
+                  </div>
+                </div>
+
+                {createdTokenRaw && (
+                  <div className="mt-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-400">Token Generated (Copy Now — Won't Be Shown Again):</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(createdTokenRaw);
+                          hapticTap();
+                          showSavedNotification();
+                        }}
+                        className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 hover:text-white px-2 py-1 rounded bg-emerald-500/20"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Copy</span>
+                      </button>
+                    </div>
+                    <code className="block text-xs font-mono text-zinc-200 bg-zinc-950 p-2 rounded border border-zinc-800 break-all select-all">
+                      {createdTokenRaw}
+                    </code>
+                  </div>
+                )}
+
+                {/* Create token bar */}
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Token label (e.g. My Laptop CLI, Raycast)"
+                    value={newTokenName}
+                    onChange={(e) => setNewTokenName(e.target.value)}
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={!newTokenName.trim()}
+                    onClick={async () => {
+                      try {
+                        const res = await createApiToken(newTokenName.trim(), 'read,write', 90);
+                        setCreatedTokenRaw(res.token);
+                        setNewTokenName('');
+                        const updated = await fetchApiTokens();
+                        setTokens(updated);
+                        hapticTap();
+                      } catch (err: any) {
+                        alert(err.message);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-black font-bold text-xs transition"
+                  >
+                    Generate
+                  </button>
+                </div>
+
+                {/* Tokens List */}
+                <div className="mt-3 space-y-2">
+                  {tokens.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-zinc-950/40 border border-zinc-800 text-center text-xs text-zinc-500">
+                      No API tokens active. Generate one above for headless terminal capture.
+                    </div>
+                  ) : (
+                    tokens.map((tok) => (
+                      <div
+                        key={tok.id}
+                        className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-zinc-200 truncate">{tok.name}</div>
+                          <div className="text-[11px] text-zinc-500 font-mono flex items-center gap-2 mt-0.5">
+                            <span>{tok.token_prefix}...</span>
+                            <span>•</span>
+                            <span>Scopes: {tok.scopes}</span>
+                            <span>•</span>
+                            <span>Created: {new Date(tok.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await deleteApiToken(tok.id);
+                            const updated = await fetchApiTokens();
+                            setTokens(updated);
+                            hapticTap();
+                          }}
+                          className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-lg transition"
+                          title="Revoke Token"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Outbound Webhooks */}
+              <div className="pt-4 border-t border-zinc-800 space-y-3">
+                <div>
+                  <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wide flex items-center gap-2">
+                    <WebhookIcon className="w-4 h-4 text-brand-400" />
+                    <span>Outbound Automation Webhooks</span>
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Push JSON payloads to n8n, Zapier, Home Assistant, Slack with HMAC-SHA256 signatures.
+                  </p>
+                </div>
+
+                {/* Create webhook form */}
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Webhook name (e.g. Home Assistant Kitchen)"
+                      value={newWebhookName}
+                      onChange={(e) => setNewWebhookName(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                    />
+                    <input
+                      type="url"
+                      placeholder="Payload URL (https://...)"
+                      value={newWebhookUrl}
+                      onChange={(e) => setNewWebhookUrl(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <input
+                      type="text"
+                      placeholder="Events filter: item.created,form_entry.submitted,counter.threshold,timer.completed or *"
+                      value={newWebhookEvents}
+                      onChange={(e) => setNewWebhookEvents(e.target.value)}
+                      className="flex-1 bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                    />
+                    <button
+                      type="button"
+                      disabled={!newWebhookName.trim() || !newWebhookUrl.trim()}
+                      onClick={async () => {
+                        try {
+                          await createWebhook({
+                            name: newWebhookName.trim(),
+                            url: newWebhookUrl.trim(),
+                            events: newWebhookEvents.trim() || '*'
+                          });
+                          setNewWebhookName('');
+                          setNewWebhookUrl('');
+                          const updated = await fetchWebhooks();
+                          setWebhooks(updated);
+                          hapticTap();
+                        } catch (err: any) {
+                          alert(err.message);
+                        }
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-black font-bold text-xs transition shrink-0"
+                    >
+                      Add Hook
+                    </button>
+                  </div>
+                </div>
+
+                {/* Webhooks list */}
+                <div className="space-y-2">
+                  {webhooks.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-zinc-950/40 border border-zinc-800 text-center text-xs text-zinc-500">
+                      No webhooks configured. Add a destination URL above.
+                    </div>
+                  ) : (
+                    webhooks.map((hook) => (
+                      <div
+                        key={hook.id}
+                        className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-zinc-200">{hook.name}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                hook.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'
+                              }`}
+                            >
+                              {hook.is_active ? 'Active' : 'Paused'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setWebhookTestStatus((s) => ({ ...s, [hook.id]: 'Testing...' }));
+                                try {
+                                  const res = await testWebhook(hook.id);
+                                  setWebhookTestStatus((s) => ({
+                                    ...s,
+                                    [hook.id]: res.success ? '200 OK' : `HTTP ${res.status}`
+                                  }));
+                                } catch (e: any) {
+                                  setWebhookTestStatus((s) => ({ ...s, [hook.id]: 'Error' }));
+                                }
+                              }}
+                              className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-bold transition"
+                            >
+                              {webhookTestStatus[hook.id] || 'Test Ping'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await updateWebhook(hook.id, { is_active: hook.is_active ? 0 : 1 });
+                                const updated = await fetchWebhooks();
+                                setWebhooks(updated);
+                              }}
+                              className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] transition"
+                            >
+                              {hook.is_active ? 'Pause' : 'Resume'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await deleteWebhook(hook.id);
+                                const updated = await fetchWebhooks();
+                                setWebhooks(updated);
+                              }}
+                              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-lg transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="font-mono text-[11px] text-zinc-400 truncate">{hook.url}</div>
+                        <div className="text-[11px] text-zinc-500 flex items-center gap-2">
+                          <span>Events: {hook.events}</span>
+                          <span>•</span>
+                          <span>Secret: {hook.secret.substring(0, 8)}...</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: VAULT IMPORTERS (OBSIDIAN & GOOGLE KEEP) */}
+          {activeTab === 'import' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wide flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-brand-400" />
+                  <span>Universal Vault & Note Importers</span>
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Migrate seamlessly to Free Form from Obsidian or Google Takeout with zero data loss.
+                </p>
+              </div>
+
+              {importStatus && (
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-brand-500/40 text-xs text-zinc-200 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-brand-400 shrink-0" />
+                  <span>{importStatus}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Obsidian Importer Card */}
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold">
+                      O
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-zinc-100">Obsidian Vault (ZIP)</h4>
+                      <p className="text-[11px] text-zinc-400">Folders to notebooks, YAML tags, [[wikilinks]].</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Zip your Obsidian vault folder and upload it here. Free Form preserves nested hierarchy, aliases, tags, and bi-directional graph connections.
+                  </p>
+                  <input
+                    ref={obsidianInputRef}
+                    type="file"
+                    accept=".zip,application/zip"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsImporting(true);
+                      setImportStatus('Extracting vault and importing notes...');
+                      try {
+                        const res = await importObsidianVault(file);
+                        setImportStatus(res.message);
+                        hapticTap();
+                      } catch (err: any) {
+                        setImportStatus(`Import failed: ${err.message}`);
+                      } finally {
+                        setIsImporting(false);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={isImporting}
+                    onClick={() => obsidianInputRef.current?.click()}
+                    className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Upload Obsidian Vault (.zip)</span>
+                  </button>
+                </div>
+
+                {/* Google Keep Importer Card */}
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold">
+                      K
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-zinc-100">Google Keep (JSON)</h4>
+                      <p className="text-[11px] text-zinc-400">Takeout JSON notes, checklists, and labels.</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Upload your Google Takeout Keep JSON files. Checklist items are automatically converted to GFM checkboxes and labels become tags.
+                  </p>
+                  <input
+                    ref={keepInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsImporting(true);
+                      setImportStatus('Parsing Google Keep JSON notes...');
+                      try {
+                        const text = await file.text();
+                        const json = JSON.parse(text);
+                        const res = await importGoogleKeep(json);
+                        setImportStatus(res.message);
+                        hapticTap();
+                      } catch (err: any) {
+                        setImportStatus(`Import failed: ${err.message}`);
+                      } finally {
+                        setIsImporting(false);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={isImporting}
+                    onClick={() => keepInputRef.current?.click()}
+                    className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Upload Google Keep (.json)</span>
+                  </button>
                 </div>
               </div>
             </div>

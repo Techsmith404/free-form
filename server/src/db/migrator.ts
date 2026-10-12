@@ -348,6 +348,47 @@ export const migrations: Migration[] = [
         }
       }
     }
+  },
+  {
+    version: 10,
+    name: '010_add_api_tokens',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS api_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          token_hash TEXT UNIQUE NOT NULL,
+          token_prefix TEXT NOT NULL,
+          scopes TEXT DEFAULT 'read,write',
+          created_at TEXT NOT NULL,
+          expires_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
+        CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
+      `);
+    }
+  },
+  {
+    version: 11,
+    name: '011_add_webhooks',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS webhooks (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL,
+          secret TEXT NOT NULL,
+          events TEXT NOT NULL DEFAULT '*',
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhooks(user_id);
+        CREATE INDEX IF NOT EXISTS idx_webhooks_active ON webhooks(is_active);
+      `);
+    }
   }
 ];
 
@@ -400,6 +441,21 @@ function baselineLegacyDatabase(db: Database.Database): void {
   // Check 8: items_fts
   if (tableExists(db, 'items_fts')) {
     insertBaseline.run(8, '008_add_fts5_fulltext_search', now);
+  }
+
+  // Check 9: item_links
+  if (tableExists(db, 'item_links')) {
+    insertBaseline.run(9, '009_add_item_links', now);
+  }
+
+  // Check 10: api_tokens
+  if (tableExists(db, 'api_tokens')) {
+    insertBaseline.run(10, '010_add_api_tokens', now);
+  }
+
+  // Check 11: webhooks
+  if (tableExists(db, 'webhooks')) {
+    insertBaseline.run(11, '011_add_webhooks', now);
   }
 }
 

@@ -15,7 +15,9 @@ import {
   SyncResponseBody,
   AuthStatusResponse,
   User,
-  Invite
+  Invite,
+  ApiToken,
+  Webhook
 } from '../types/index.js';
 import {
   dbGetItems,
@@ -1332,5 +1334,130 @@ export const api = {
   emptyTrash,
   restoreAllTrash
 };
+
+// ==========================================
+// VAULT IMPORTERS & CLOUD MIGRATION
+// ==========================================
+
+export async function importObsidianVault(file: File): Promise<{ success: boolean; stats: any; message: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(apiUrl('/api/import/obsidian'), {
+    method: 'POST',
+    body: formData,
+    credentials: 'include'
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Import failed' }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function importGoogleKeep(jsonData: any): Promise<{ success: boolean; stats: any; message: string }> {
+  const res = await fetch(apiUrl('/api/import/keep'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(jsonData),
+    credentials: 'include'
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Import failed' }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+// ==========================================
+// PERSONAL ACCESS TOKENS (PATs)
+// ==========================================
+
+export async function fetchApiTokens(): Promise<ApiToken[]> {
+  const res = await fetch(apiUrl('/api/tokens'), { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createApiToken(name: string, scopes: string = 'read,write', expiresInDays?: number): Promise<any> {
+  const res = await fetch(apiUrl('/api/tokens'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, scopes, expires_in_days: expiresInDays }),
+    credentials: 'include'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create token' }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteApiToken(id: string): Promise<void> {
+  const res = await fetch(apiUrl(`/api/tokens/${id}`), {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+// ==========================================
+// OUTBOUND WEBHOOKS
+// ==========================================
+
+export async function fetchWebhooks(): Promise<Webhook[]> {
+  const res = await fetch(apiUrl('/api/webhooks'), { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createWebhook(webhook: { name: string; url: string; secret?: string; events?: string }): Promise<Webhook> {
+  const res = await fetch(apiUrl('/api/webhooks'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(webhook),
+    credentials: 'include'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create webhook' }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function updateWebhook(id: string, updates: Partial<Webhook>): Promise<Webhook> {
+  const res = await fetch(apiUrl(`/api/webhooks/${id}`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteWebhook(id: string): Promise<void> {
+  const res = await fetch(apiUrl(`/api/webhooks/${id}`), {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+export async function testWebhook(id: string): Promise<{ success: boolean; status: number }> {
+  const res = await fetch(apiUrl(`/api/webhooks/${id}/test`), {
+    method: 'POST',
+    credentials: 'include'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to test webhook' }));
+    throw new Error(err.error || err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 
 

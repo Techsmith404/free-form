@@ -1,6 +1,7 @@
 import WebSocket, { WebSocket as WSClient } from 'ws';
 import { db } from '../db/index.js';
 import { Timer, Reminder, RealtimeEvent } from '../types/index.js';
+import { dispatchWebhookEvent } from './webhook.js';
 
 // User-partitioned active client connections
 const clientsByUser = new Map<string, Set<WSClient>>();
@@ -476,6 +477,7 @@ export function startRealtimeTicker() {
             const updated = getTimerById(timer.id)!;
             broadcast({ type: 'TIMER_RING', payload: { timer: updated } }, updated.user_id || undefined);
             broadcast({ type: 'TIMER_UPDATED', payload: { timer: updated } }, updated.user_id || undefined);
+            dispatchWebhookEvent('timer.completed', updated, updated.user_id);
           }
         }
       }

@@ -428,3 +428,43 @@ export const AuthStatusResponseSchema = z.object({
   user: UserSchema.nullable().optional()
 });
 export type AuthStatusResponse = z.infer<typeof AuthStatusResponseSchema>;
+
+// ==========================================
+// 12. Personal Access Tokens (PATs) & Webhooks
+// ==========================================
+
+export const ApiTokenSchema = z.object({
+  id: z.string(),
+  user_id: z.string().nullable().optional(),
+  name: z.string(),
+  token_prefix: z.string(),
+  scopes: z.string().default('read,write'),
+  created_at: z.string(),
+  expires_at: z.string().nullable().optional()
+});
+export type ApiToken = z.infer<typeof ApiTokenSchema>;
+
+export const WebhookEventSchema = z.enum([
+  '*',
+  'item.created',
+  'item.updated',
+  'item.deleted',
+  'form_entry.submitted',
+  'counter.threshold',
+  'timer.completed'
+]);
+export type WebhookEvent = z.infer<typeof WebhookEventSchema>;
+
+export const WebhookSchema = z.object({
+  id: z.string(),
+  user_id: z.string().nullable().optional(),
+  name: z.string(),
+  url: z.string().url(),
+  secret: z.string(),
+  events: z.string().default('*'),
+  is_active: z.number().default(1),
+  created_at: z.string(),
+  updated_at: z.string()
+});
+export type Webhook = z.infer<typeof WebhookSchema>;
+

@@ -608,4 +608,240 @@ export async function exportRoutes(fastify: FastifyInstance) {
       imported_for_user: userId
     };
   });
+
+  // ==========================================
+  // OBSIDIAN VAULT IMPORTER
+  // ==========================================
+  fastify.post('/api/import/obsidian', async (request, reply) => {
+    const userId = (request as any).user?.id || null;
+    const data = await request.file();
+    if (!data) {
+      return reply.code(400).send({ error: 'No vault archive file uploaded' });
+    }
+
+    const buf = await data.toBuffer();
+    let zip: AdmZip;
+    try {
+      zip = new AdmZip(buf);
+    } catch (e: any) {
+      return reply.code(400).send({ error: `Invalid ZIP archive: ${e.message}` });
+    }
+
+    const entries = zip.getEntries();
+    const now = new Date().toISOString();
+    const stats = { notebooks: 0, notes: 0, tags: 0 };
+
+    // Helper: Parse lightweight YAML frontmatter
+    function parseFrontmatter(raw: string): { frontmatter: Record<string, any>; content: string } {
+      const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+      if (!match) return { frontmatter: {}, content: raw };
+
+      const yamlBlock = match[1];
+      const markdownBody = match[2];
+      const fm: Record<string, any> = {};
+
+      for (const line of yamlBlock.split('\n')) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+          const key = line.substring(0, colonIdx).trim();
+          let val = line.substring(colonIdx + 1).trim();
+          if (val.startsWith('[') && val.endsWith(']')) {
+            val = val.substring(1, val.length - 1).split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')) as any;
+          } else {
+            val = val.replace(/^['"]|['"]$/g, '');
+          }
+          fm[key] = val;
+        }
+      }
+
+      return { frontmatter: fm, content: markdownBody };
+    }
+
+    // Map folder paths to Notebook IDs
+    const folderToNotebookId = new Map<string, string>();
+
+    function getOrCreateNotebook(folderPath: string): string | null {
+      if (!folderPath || folderPath === '.' || folderPath === '/') return null;
+      if (folderToNotebookId.has(folderPath)) return folderToNotebookId.get(folderPath)!;
+
+      const segments = folderPath.split('/').filter(Boolean);
+      let currentParentId: string | null = null;
+      let cumulativePath = '';
+
+      for (const seg of segments) {
+        cumulativePath = cumulativePath ? `${cumulativePath}/${seg}` : seg;
+        if (folderToNotebookId.has(cumulativePath)) {
+          currentParentId = folderToNotebookId.get(cumulativePath)!;
+          continue;
+        }
+
+        // Check if notebook exists in DB
+        let nb = db.prepare('SELECT id FROM notebooks WHERE name = ? AND (parent_id IS ? OR parent_id = ?) AND (user_id = ? OR user_id IS NULL)')
+          .get(seg, currentParentId, currentParentId, userId) as any;
+
+        if (!nb) {
+          const newId = `nb-${crypto.randomUUID()}`;
+          db.prepare(`
+            INSERT INTO notebooks (id, user_id, name, description, parent_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(newId, userId, seg, `Imported from Obsidian /${cumulativePath}`, currentParentId, now, now);
+          nb = { id: newId };
+          stats.notebooks++;
+        }
+
+        folderToNotebookId.set(cumulativePath, nb.id);
+        currentParentId = nb.id;
+      }
+
+      return currentParentId;
+    }
+
+    const createdNoteIds: string[] = [];
+
+    const importTx = db.transaction(() => {
+      for (const entry of entries) {
+        if (entry.isDirectory) continue;
+        const entryName = entry.entryName.replace(/\\/g, '/');
+
+        // Ignore hidden obsidian folders like .obsidian/
+        if (entryName.includes('/.obsidian/') || entryName.startsWith('.obsidian/')) continue;
+        if (!entryName.toLowerCase().endsWith('.md')) continue;
+
+        const parts = entryName.split('/');
+        const fileNameWithExt = parts.pop()!;
+        const noteTitle = fileNameWithExt.replace(/\.md$/i, '');
+        const folderPath = parts.join('/');
+
+        const notebookId = getOrCreateNotebook(folderPath);
+        const rawText = entry.getData().toString('utf8');
+        const { frontmatter, content } = parseFrontmatter(rawText);
+
+        const itemId = `item-${crypto.randomUUID()}`;
+        const itemCreated = frontmatter.created || now;
+        const itemUpdated = frontmatter.updated || now;
+
+        db.prepare(`
+          INSERT INTO items (id, user_id, notebook_id, title, type, content, metadata, priority, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 'note', ?, '{}', '', 0, 0, 0, 0, ?, ?)
+        `).run(itemId, userId, notebookId, noteTitle, content, itemCreated, itemUpdated);
+        stats.notes++;
+        createdNoteIds.push(itemId);
+
+        // Tags from frontmatter
+        const rawTags = frontmatter.tags || frontmatter.tag;
+        if (rawTags) {
+          const tagsArray: string[] = Array.isArray(rawTags)
+            ? rawTags
+            : String(rawTags).split(/[, ]+/).filter(Boolean);
+
+          for (const t of tagsArray) {
+            const cleanTag = t.replace(/^#/, '').trim();
+            if (!cleanTag) continue;
+
+            let tag = db.prepare('SELECT id FROM tags WHERE name = ?').get(cleanTag) as any;
+            if (!tag) {
+              const tagId = `tag-${crypto.randomUUID()}`;
+              db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(tagId, cleanTag, '#22c55e');
+              tag = { id: tagId };
+              stats.tags++;
+            }
+            db.prepare('INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (?, ?)').run(itemId, tag.id);
+          }
+        }
+      }
+    });
+
+    importTx();
+
+    // Rebuild backlinks graph for newly imported notes
+    refreshItemLinks();
+
+    return {
+      success: true,
+      stats,
+      message: `Successfully imported ${stats.notes} notes across ${stats.notebooks} notebooks from Obsidian vault.`
+    };
+  });
+
+  // ==========================================
+  // GOOGLE KEEP IMPORTER
+  // ==========================================
+  fastify.post('/api/import/keep', async (request, reply) => {
+    const userId = (request as any).user?.id || null;
+    const body = request.body as any;
+
+    let notesArray: any[] = [];
+    if (Array.isArray(body)) {
+      notesArray = body;
+    } else if (body && Array.isArray(body.notes)) {
+      notesArray = body.notes;
+    } else if (body && body.title !== undefined) {
+      notesArray = [body];
+    } else {
+      return reply.code(400).send({ error: 'Expected Google Keep JSON object or array of note objects' });
+    }
+
+    const now = new Date().toISOString();
+    const stats = { notes: 0, tags: 0 };
+
+    const importTx = db.transaction(() => {
+      for (const note of notesArray) {
+        const title = (note.title || 'Untitled Note').trim();
+        let markdownContent = '';
+
+        // Google Keep checklist items
+        if (Array.isArray(note.listContent)) {
+          const checkItems = note.listContent.map((li: any) => {
+            const isChecked = Boolean(li.isChecked);
+            const text = (li.text || '').trim();
+            return `- [${isChecked ? 'x' : ' '}] ${text}`;
+          });
+          markdownContent = checkItems.join('\n');
+        } else if (note.textContent) {
+          markdownContent = String(note.textContent);
+        } else if (note.text) {
+          markdownContent = String(note.text);
+        }
+
+        const isPinned = note.isPinned ? 1 : 0;
+        const isArchived = (note.isArchived || note.isTrashed) ? 1 : 0;
+        const itemId = `item-${crypto.randomUUID()}`;
+        const createdAt = note.userEditedTimestampUsec
+          ? new Date(Math.floor(note.userEditedTimestampUsec / 1000)).toISOString()
+          : (note.created_at || now);
+
+        db.prepare(`
+          INSERT INTO items (id, user_id, notebook_id, title, type, content, metadata, priority, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
+          VALUES (?, ?, NULL, ?, 'note', ?, '{}', '', 0, ?, ?, 0, ?, ?)
+        `).run(itemId, userId, title, markdownContent, isPinned, isArchived, createdAt, now);
+        stats.notes++;
+
+        // Google Keep labels -> Tags
+        if (Array.isArray(note.labels)) {
+          for (const lbl of note.labels) {
+            const labelName = (typeof lbl === 'string' ? lbl : lbl.name || '').trim();
+            if (!labelName) continue;
+
+            let tag = db.prepare('SELECT id FROM tags WHERE name = ?').get(labelName) as any;
+            if (!tag) {
+              const tagId = `tag-${crypto.randomUUID()}`;
+              db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(tagId, labelName, '#eab308');
+              tag = { id: tagId };
+              stats.tags++;
+            }
+            db.prepare('INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (?, ?)').run(itemId, tag.id);
+          }
+        }
+      }
+    });
+
+    importTx();
+    refreshItemLinks();
+
+    return {
+      success: true,
+      stats,
+      message: `Successfully imported ${stats.notes} Google Keep notes with ${stats.tags} tags.`
+    };
+  });
 }
