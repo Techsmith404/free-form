@@ -8,7 +8,8 @@ echo "=================================================="
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-echo "📦 1. Building React web client..."
+echo "📦 1. Building shared schemas & React web client..."
+npm run build:shared
 npm run build:client
 
 echo "🔄 2. Syncing Capacitor Android assets & plugins..."
