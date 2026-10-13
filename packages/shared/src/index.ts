@@ -460,7 +460,7 @@ export const WebhookSchema = z.object({
   user_id: z.string().nullable().optional(),
   name: z.string(),
   url: z.string().url(),
-  secret: z.string(),
+  secret: z.string().optional(),
   events: z.string().default('*'),
   is_active: z.number().default(1),
   created_at: z.string(),

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import crypto from 'crypto';
+import { ownerIdOf } from '../services/owner.js';
 
 export async function notebookRoutes(fastify: FastifyInstance) {
   // Get all notebooks with item count
@@ -52,7 +53,7 @@ export async function notebookRoutes(fastify: FastifyInstance) {
   // Create notebook
   fastify.post('/api/notebooks', async (request, reply) => {
     const body = request.body as any;
-    const userId = (request as any).user?.id || null;
+    const userId = ownerIdOf(request);
     const id = body.id || `nb-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 
@@ -99,9 +100,19 @@ export async function notebookRoutes(fastify: FastifyInstance) {
     const body = request.body as any;
     const now = new Date().toISOString();
 
-    const existing = db.prepare('SELECT * FROM notebooks WHERE id = ?').get(id);
+    const scopeId = (request as any).user?.id as string | undefined;
+    const existing = (scopeId
+      ? db.prepare('SELECT * FROM notebooks WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, scopeId)
+      : db.prepare('SELECT * FROM notebooks WHERE id = ?').get(id));
     if (!existing) {
       return reply.code(404).send({ error: 'Notebook not found' });
+    }
+
+    if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim())) {
+      return reply.code(400).send({ error: 'Name must be a non-empty string' });
+    }
+    if (body.parent_id !== undefined && body.parent_id === id) {
+      return reply.code(400).send({ error: 'A notebook cannot be its own parent' });
     }
 
     db.prepare(`
@@ -139,13 +150,20 @@ export async function notebookRoutes(fastify: FastifyInstance) {
   fastify.delete('/api/notebooks/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    // Move associated items to uncategorized (notebook_id = null)
-    db.prepare('UPDATE items SET notebook_id = NULL WHERE notebook_id = ?').run(id);
-    const result = db.prepare('DELETE FROM notebooks WHERE id = ?').run(id);
-
-    if (result.changes === 0) {
+    const scopeId = (request as any).user?.id as string | undefined;
+    const existing = (scopeId
+      ? db.prepare('SELECT id, parent_id FROM notebooks WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, scopeId)
+      : db.prepare('SELECT id, parent_id FROM notebooks WHERE id = ?').get(id)) as { id: string; parent_id: string | null } | undefined;
+    if (!existing) {
       return reply.code(404).send({ error: 'Notebook not found' });
     }
+
+    db.transaction(() => {
+      // Move associated items to uncategorized (notebook_id = null) and lift child notebooks one level up
+      db.prepare('UPDATE items SET notebook_id = NULL WHERE notebook_id = ?').run(id);
+      db.prepare('UPDATE notebooks SET parent_id = ? WHERE parent_id = ?').run(existing.parent_id, id);
+      db.prepare('DELETE FROM notebooks WHERE id = ?').run(id);
+    })();
 
     return { success: true, id };
   });

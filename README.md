@@ -107,13 +107,28 @@ Most note apps force you into one of two extremes:
 * **Git-Style 3-Way Merge & Conflict Resolver**: Upon reconnection, changes merge automatically. When the same note is edited concurrently on multiple devices, the most recent version becomes active, while the other is preserved and flagged in the **Visual Diff & Merge Modal** where you can compare side-by-side and choose how to resolve.
 * **Mathematical Counter Merging**: Tally increments sync as mathematical deltas (`+2`, `+5`), ensuring counters on different devices add together rather than overwriting.
 
-### 10. 🎨 Brand Identity & Production Icon Suite
-* **Handcrafted Vector Brand Icon**: A modern stylized "F" ribbon lettermark pairing sharp architectural arms with flowing cursive ribbon loops in neon cyber teal (`#48BEB6` -> `#55DBC7`) and electric blue (`#306ECE` -> `#3EAED7`), with 3D underside shadows.
-* **Pure Mathematical Béziers**: 100% vector-authored SVG with zero auto-trace bumps or pixel staircasing.
-* **Complete Asset Suite**: Scaled and generated for PWA 512×512, 192×192, iOS Apple Touch Icon (180×180), multi-size Windows favicon (16/32/48), and vector master SVG.
-* **Airtight Cache Busting**: Server headers enforce `no-cache, no-store, must-revalidate` on HTML, Web Manifest, and Service Workers, combined with immutable content-hashed Vite bundles and cache-busting version query tags (`?v=2`) on all browser icon links.
+### 11. 📦 Universal Vault & Note Importers
+* **Obsidian Vault Importer (.zip)**: Upload full vault archives with nested directory trees. Free Form reconstructs folder hierarchies as notebooks, imports YAML frontmatter metadata, parses tags, and preserves `[[wikilinks]]`.
+* **Google Keep Importer (.json)**: Migrate Google Takeout exports directly. Checklists convert seamlessly to GFM markdown task lists, labels become tags, and trashed notes are archived.
 
----
+### 12. ⚡ Headless Automation: PATs & Outbound Webhooks
+* **Personal Access Tokens (PATs)**: Generate scoped bearer tokens (`ff_pat_...`) for Raycast, Alfred, iOS Shortcuts, and headless CLI scripts.
+* **Outbound Automation Webhooks**: Push real-time event payloads to Home Assistant, Zapier, n8n, or Slack. Includes event filtering (`*`, `item.created`, `counter.threshold`, `timer.completed`), HMAC-SHA256 request signatures, and automatic retry backoff.
+
+### 13. ⌨️ Free Form CLI (`bin/freeform.js`)
+* Instant terminal capture for notes, counters, and timers:
+  ```bash
+  # Quick note or piped stdin
+  freeform new "Deploying production build" --tag release
+  cat notes.md | freeform import --notebook Work
+
+  # Tally counters
+  freeform count "Pushups" +5
+
+  # Pomodoro timers
+  freeform timer 25m "Deep Work Sprint"
+  ```
+
 
 ## 🚀 Quick Start
 

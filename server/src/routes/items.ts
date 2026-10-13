@@ -5,6 +5,7 @@ import { generateMarkdownFromForm } from '../services/markdown.js';
 import { syncItemLinks, getBacklinks, getOutgoingLinks } from '../services/links.js';
 import { FormTemplate, ItemType } from '../types/index.js';
 import { dispatchWebhookEvent } from '../services/webhook.js';
+import { ownerIdOf } from '../services/owner.js';
 
 function formatFtsQuery(q: string): string {
   const tokens = q.trim().split(/\s+/).filter(Boolean);
@@ -16,6 +17,22 @@ function formatFtsQuery(q: string): string {
     })
     .filter(Boolean)
     .join(' ');
+}
+
+/**
+ * Load an item only if `userId` may access it: unowned rows, rows the user owns, or rows
+ * shared with the user (write access additionally requires an 'edit' share).
+ * Prevents authenticated users from reading/modifying each other's items by guessing ids.
+ */
+function loadAccessibleItem(id: string, userId: string | undefined, write: boolean): any | null {
+  const row = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
+  if (!row) return null;
+  if (!userId || row.user_id === null || row.user_id === userId) return row;
+  const share = db
+    .prepare('SELECT permission FROM item_shares WHERE item_id = ? AND shared_with_user_id = ?')
+    .get(id, userId) as { permission: string } | undefined;
+  if (share && (!write || share.permission === 'edit')) return row;
+  return null;
 }
 
 export async function itemRoutes(fastify: FastifyInstance) {
@@ -208,6 +225,9 @@ export async function itemRoutes(fastify: FastifyInstance) {
   // Get single item
   fastify.get('/api/items/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
+    if (!loadAccessibleItem(id, (request as any).user?.id, false)) {
+      return reply.code(404).send({ error: 'Item not found' });
+    }
     const row = db.prepare(`
       SELECT 
         i.*,
@@ -299,7 +319,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
     const is_pinned = body.is_pinned ? 1 : 0;
     const hide_from_all = body.hide_from_all ? 1 : 0;
     const priority = body.priority || '';
-    const userId = (request as any).user?.id || null;
+    const userId = ownerIdOf(request);
 
     db.prepare(`
       INSERT INTO items (id, user_id, notebook_id, title, type, content, metadata, priority, is_favorite, is_pinned, is_archived, hide_from_all, created_at, updated_at)
@@ -367,7 +387,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
     const body = request.body as any;
     const now = new Date().toISOString();
 
-    const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
+    const existing = loadAccessibleItem(id, (request as any).user?.id, true);
     if (!existing) {
       return reply.code(404).send({ error: 'Item not found' });
     }
@@ -457,20 +477,21 @@ export async function itemRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     const query = request.query as { permanent?: string };
 
-    const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any;
+    const existing = loadAccessibleItem(id, (request as any).user?.id, true);
+    if (!existing) {
+      return reply.code(404).send({ error: 'Item not found' });
+    }
+
     if (query.permanent === '1') {
-      const result = db.prepare('DELETE FROM items WHERE id = ?').run(id);
-      if (result.changes === 0) {
-        return reply.code(404).send({ error: 'Item not found' });
-      }
-      dispatchWebhookEvent('item.deleted', { id, permanent: true }, existing?.user_id || (request as any).user?.id);
+      db.prepare('DELETE FROM items WHERE id = ?').run(id);
+      dispatchWebhookEvent('item.deleted', { id, permanent: true }, existing.user_id || (request as any).user?.id);
       return { success: true, id, permanent: true };
     }
 
     // Soft delete / Move to trash
     const now = new Date().toISOString();
     db.prepare('UPDATE items SET is_archived = 1, updated_at = ? WHERE id = ?').run(now, id);
-    dispatchWebhookEvent('item.deleted', { id, permanent: false, archived: true }, existing?.user_id || (request as any).user?.id);
+    dispatchWebhookEvent('item.deleted', { id, permanent: false, archived: true }, existing.user_id || (request as any).user?.id);
     return { success: true, id, archived: true };
   });
 
@@ -667,7 +688,7 @@ export async function itemRoutes(fastify: FastifyInstance) {
     };
 
     const item = db.prepare("SELECT * FROM items WHERE id = ? AND type = 'counter'").get(id) as any;
-    if (!item) {
+    if (!item || !loadAccessibleItem(id, (request as any).user?.id, true)) {
       return reply.code(404).send({ error: 'Counter item not found' });
     }
 

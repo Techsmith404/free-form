@@ -22,10 +22,12 @@ export const ManageUsersModal: React.FC<ManageUsersModalProps> = ({ isOpen, onCl
   const [maxUses, setMaxUses] = useState(1);
   const [expiresInDays, setExpiresInDays] = useState(7);
   const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = async () => {
     if (!isOpen) return;
     setLoading(true);
+    setError(null);
     try {
       const [invList, userList] = await Promise.all([
         fetchInvites().catch(() => []),
@@ -33,8 +35,9 @@ export const ManageUsersModal: React.FC<ManageUsersModalProps> = ({ isOpen, onCl
       ]);
       setInvites(invList);
       setUsers(userList);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err?.message || 'Failed to load user management data');
     } finally {
       setLoading(false);
     }
@@ -47,6 +50,7 @@ export const ManageUsersModal: React.FC<ManageUsersModalProps> = ({ isOpen, onCl
   const handleCreateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreating(true);
+    setError(null);
     try {
       const newInv = await createInvite({
         role,
@@ -55,23 +59,26 @@ export const ManageUsersModal: React.FC<ManageUsersModalProps> = ({ isOpen, onCl
       });
       setInvites([newInv, ...invites]);
     } catch (err: any) {
-      alert(err.message || 'Failed to create invite');
+      setError(err.message || 'Failed to create invite');
     } finally {
       setIsCreating(false);
     }
   };
 
   const handleDeleteInvite = async (code: string) => {
+    setError(null);
     try {
       await deleteInvite(code);
       setInvites(invites.filter((i) => i.code !== code));
     } catch (err: any) {
-      alert(err.message || 'Failed to revoke invite');
+      setError(err.message || 'Failed to revoke invite');
     }
   };
 
   const copyToClipboard = (code: string) => {
-    navigator.clipboard.writeText(code);
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(code).catch(() => {});
+    }
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
   };
@@ -130,6 +137,18 @@ export const ManageUsersModal: React.FC<ManageUsersModalProps> = ({ isOpen, onCl
 
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
+          {error && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-center justify-between">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-300 font-bold ml-2 p-1 text-sm"
+              >
+                ×
+              </button>
+            </div>
+          )}
           {activeTab === 'invites' && (
             <>
               {/* Generator Form */}

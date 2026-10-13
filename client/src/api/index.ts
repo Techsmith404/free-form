@@ -176,7 +176,8 @@ export async function initAuthToken(): Promise<string> {
 
 export function apiUrl(endpoint: string): string {
   const base = getServerUrl();
-  const cleanEp = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+  const stripped = endpoint.replace(/^\/?api(\/|$)/, '$1');
+  const cleanEp = stripped.startsWith('/') ? stripped : '/' + stripped;
   if (base) {
     const cleanBase = base.replace(/\/+$/, '');
     return `${cleanBase}/api${cleanEp}`;
@@ -1343,11 +1344,11 @@ export async function importObsidianVault(file: File): Promise<{ success: boolea
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(apiUrl('/api/import/obsidian'), {
+  const res = await fetchWithTimeout(apiUrl('/import/obsidian'), {
     method: 'POST',
     body: formData,
     credentials: 'include'
-  });
+  }, 30000);
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Import failed' }));
@@ -1358,12 +1359,12 @@ export async function importObsidianVault(file: File): Promise<{ success: boolea
 }
 
 export async function importGoogleKeep(jsonData: any): Promise<{ success: boolean; stats: any; message: string }> {
-  const res = await fetch(apiUrl('/api/import/keep'), {
+  const res = await fetchWithTimeout(apiUrl('/import/keep'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(jsonData),
     credentials: 'include'
-  });
+  }, 15000);
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Import failed' }));
@@ -1378,18 +1379,22 @@ export async function importGoogleKeep(jsonData: any): Promise<{ success: boolea
 // ==========================================
 
 export async function fetchApiTokens(): Promise<ApiToken[]> {
-  const res = await fetch(apiUrl('/api/tokens'), { credentials: 'include' });
+  const res = await fetchWithTimeout(apiUrl('/tokens'), { credentials: 'include' }, 4000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-export async function createApiToken(name: string, scopes: string = 'read,write', expiresInDays?: number): Promise<any> {
-  const res = await fetch(apiUrl('/api/tokens'), {
+export async function createApiToken(
+  name: string,
+  scopes: string = 'read,write',
+  expiresInDays?: number
+): Promise<{ id: string; name: string; token: string; scopes: string; token_prefix: string; expires_at: string | null; created_at: string }> {
+  const res = await fetchWithTimeout(apiUrl('/tokens'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, scopes, expires_in_days: expiresInDays }),
     credentials: 'include'
-  });
+  }, 4000);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Failed to create token' }));
     throw new Error(err.error || `HTTP ${res.status}`);
@@ -1398,10 +1403,10 @@ export async function createApiToken(name: string, scopes: string = 'read,write'
 }
 
 export async function deleteApiToken(id: string): Promise<void> {
-  const res = await fetch(apiUrl(`/api/tokens/${id}`), {
+  const res = await fetchWithTimeout(apiUrl(`/tokens/${id}`), {
     method: 'DELETE',
     credentials: 'include'
-  });
+  }, 4000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
@@ -1410,18 +1415,23 @@ export async function deleteApiToken(id: string): Promise<void> {
 // ==========================================
 
 export async function fetchWebhooks(): Promise<Webhook[]> {
-  const res = await fetch(apiUrl('/api/webhooks'), { credentials: 'include' });
+  const res = await fetchWithTimeout(apiUrl('/webhooks'), { credentials: 'include' }, 4000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-export async function createWebhook(webhook: { name: string; url: string; secret?: string; events?: string }): Promise<Webhook> {
-  const res = await fetch(apiUrl('/api/webhooks'), {
+export async function createWebhook(webhook: {
+  name: string;
+  url: string;
+  secret?: string;
+  events?: string;
+}): Promise<Webhook & { secret?: string }> {
+  const res = await fetchWithTimeout(apiUrl('/webhooks'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(webhook),
     credentials: 'include'
-  });
+  }, 4000);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Failed to create webhook' }));
     throw new Error(err.error || `HTTP ${res.status}`);
@@ -1430,29 +1440,29 @@ export async function createWebhook(webhook: { name: string; url: string; secret
 }
 
 export async function updateWebhook(id: string, updates: Partial<Webhook>): Promise<Webhook> {
-  const res = await fetch(apiUrl(`/api/webhooks/${id}`), {
+  const res = await fetchWithTimeout(apiUrl(`/webhooks/${id}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
     credentials: 'include'
-  });
+  }, 4000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function deleteWebhook(id: string): Promise<void> {
-  const res = await fetch(apiUrl(`/api/webhooks/${id}`), {
+  const res = await fetchWithTimeout(apiUrl(`/webhooks/${id}`), {
     method: 'DELETE',
     credentials: 'include'
-  });
+  }, 4000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 export async function testWebhook(id: string): Promise<{ success: boolean; status: number }> {
-  const res = await fetch(apiUrl(`/api/webhooks/${id}/test`), {
+  const res = await fetchWithTimeout(apiUrl(`/webhooks/${id}/test`), {
     method: 'POST',
     credentials: 'include'
-  });
+  }, 6000);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Failed to test webhook' }));
     throw new Error(err.error || err.message || `HTTP ${res.status}`);

@@ -15,9 +15,23 @@
 
 import fs from 'fs';
 
-const args = process.argv.slice(2);
-const SERVER_URL = (process.env.FREEFORM_URL || 'http://localhost:3000').replace(/\/+$/, '');
-const TOKEN = process.env.FREEFORM_TOKEN || '';
+const rawArgs = process.argv.slice(2);
+let customUrl = '';
+let customToken = '';
+const remainingArgs = [];
+
+for (let i = 0; i < rawArgs.length; i++) {
+  if (rawArgs[i] === '--url' && rawArgs[i + 1]) {
+    customUrl = rawArgs[++i];
+  } else if (rawArgs[i] === '--token' && rawArgs[i + 1]) {
+    customToken = rawArgs[++i];
+  } else {
+    remainingArgs.push(rawArgs[i]);
+  }
+}
+
+const SERVER_URL = (customUrl || process.env.FREEFORM_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const TOKEN = customToken || process.env.FREEFORM_TOKEN || '';
 
 function printHelp() {
   console.log(`
@@ -25,6 +39,7 @@ Free Form CLI (freeform) - Headless Capture & Automation
 
 USAGE:
   freeform new <content> [options]        Capture a new note
+  freeform import [options]               Import note from stdin or file
   freeform count <name> [delta|value]      Increment, decrement, or set a counter
   freeform timer <duration> [title]       Create and start a countdown timer
   freeform list                           List recent notes and items
@@ -50,7 +65,11 @@ async function request(path, options = {}) {
     ...(options.headers || {})
   };
 
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, {
+    ...options,
+    headers,
+    signal: options.signal || AbortSignal.timeout(15000)
+  });
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} ${res.statusText}: ${errorText}`);
@@ -128,7 +147,7 @@ async function handleCount(cmdArgs) {
     process.exit(1);
   }
 
-  const items = await request('/api/items');
+  const items = await request('/api/items?type=counter');
   const counter = items.find(
     (i) => i.type === 'counter' && i.title.toLowerCase() === targetName.toLowerCase()
   );
@@ -200,8 +219,8 @@ async function handleList() {
 }
 
 async function main() {
-  const command = args[0];
-  const cmdArgs = args.slice(1);
+  const command = remainingArgs[0];
+  const cmdArgs = remainingArgs.slice(1);
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     printHelp();
@@ -212,6 +231,7 @@ async function main() {
     switch (command) {
       case 'new':
       case 'add':
+      case 'import':
         await handleNew(cmdArgs);
         break;
       case 'count':

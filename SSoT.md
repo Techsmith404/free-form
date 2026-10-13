@@ -588,9 +588,37 @@ All endpoints are hosted under `/api/*` on Fastify:
   * **Server Broadcasts**: `TIMER_UPDATED`, `TIMER_RING`, `TIMER_DISMISSED`, `TIMER_DELETED`, `REMINDER_TRIGGER`, `REMINDER_DISMISSED`, `REMINDER_UPDATED`, `REMINDER_DELETED`.
   * **Client Inbound**: Sends instant actions (`DISMISS_TIMER`, `START_TIMER`, `PAUSE_TIMER`, `RESET_TIMER`, `DISMISS_REMINDER`, `COMPLETE_REMINDER`, `PING`).
 
-### Utilities
+### Personal Access Tokens (PATs) (`/api/tokens`)
+* `GET /api/tokens`: Lists active API tokens belonging to the authenticated user.
+* `POST /api/tokens`: Generates a new PAT (`name`, `scopes: 'read,write' | 'read'`, `expires_in_days?`). The full `ff_pat_...` token string is returned exclusively once upon creation.
+* `DELETE /api/tokens/:id`: Revokes and permanently deletes an API token.
+* **Privilege Separation**: PATs cannot access `/api/tokens` management endpoints, and tokens with read-only scopes are blocked from mutating HTTP requests.
+
+### Outbound Automation Webhooks (`/api/webhooks`)
+* `GET /api/webhooks`: Lists all active webhooks for the authenticated user. Secrets are strictly omitted.
+* `POST /api/webhooks`: Registers a webhook destination (`name`, `url`, `events?`, `secret?`). Signing secret is generated and returned once.
+* `PUT /api/webhooks/:id`: Updates an existing webhook (name, URL, events filter, active status, secret rotation).
+* `DELETE /api/webhooks/:id`: Deletes a webhook.
+* `POST /api/webhooks/:id/test`: Dispatches a mock ping event to verify URL connectivity.
+* **Payload Signatures**: Delivered via HTTP POST with `X-FreeForm-Event`, `X-FreeForm-Timestamp`, and HMAC-SHA256 signature header `X-FreeForm-Signature`. Retried with exponential backoff on failure.
+
+### Universal Vault Importers (`/api/import`)
+* `POST /api/import/obsidian`: Accepts a multipart ZIP file containing an Obsidian vault. Extracts notes, parses frontmatter tags and YAML metadata, maps directory trees to hierarchical notebooks, and synchronizes bi-directional `[[wikilinks]]`.
+* `POST /api/import/keep`: Accepts a JSON payload (or array of notes) exported from Google Takeout. Converts checklist items to markdown task lists, labels to tags, and trashed notes to archived items.
+
+### Free Form Headless CLI (`bin/freeform.js`)
+* Multi-command capture tool with environment variable and CLI flag support:
+  * `freeform new <content> [--title "..."] [--notebook "..."] [--tag "..."]`
+  * `freeform import [--notebook "..."]` (supports piped stdin: `cat notes.md | freeform import`)
+  * `freeform count <name> [+5|-1|10]`
+  * `freeform timer <duration> [title]`
+  * `freeform list`
+* Global flags: `--url <server_url>`, `--token <pat_token>`.
+
+### Utilities & Security
 * `POST /api/bookmarks/scrape`: Crawls a URL to extract OpenGraph metadata (`og:title`, `og:description`, `og:image`, `favicon`).
-* `POST /api/upload`: Multipart file upload for images and signatures; saved to `./data/uploads/`.
+* `POST /api/upload`: Multipart file upload for images and signatures; saved to `./data/uploads/` with MIME allowlist naming and SVG script sanitization.
+* `GET /uploads/*`: Static file handler protected with Content-Security-Policy sandbox and `X-Content-Type-Options: nosniff`.
 * `GET /api/export`: Generates and streams a full workspace backup ZIP containing markdown files and `free-form-backup.json`.
 * `GET /api/health`: Health check returning `{ status: 'ok', time: '...' }`.
 

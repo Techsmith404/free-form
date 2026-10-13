@@ -119,6 +119,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
   const [newWebhookEvents, setNewWebhookEvents] = useState('*');
   const [webhookTestStatus, setWebhookTestStatus] = useState<Record<string, string>>({});
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [webhookError, setWebhookError] = useState<string | null>(null);
+  const [createdWebhookSecret, setCreatedWebhookSecret] = useState<{ name: string; secret: string } | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -849,7 +852,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="p-3.5 rounded-xl bg-zinc-950/40 border border-zinc-800/80 text-xs text-zinc-400 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-zinc-300">Free Form Platform</span>
-                  <span className="font-mono text-brand-400">v1.3.0</span>
+                  <span className="font-mono text-brand-400">v0.3.0</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Architecture</span>
@@ -880,6 +883,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
+                {tokenError && (
+                  <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-center justify-between">
+                    <span>{tokenError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setTokenError(null)}
+                      className="text-red-400 hover:text-red-300 font-bold ml-2 p-1 text-sm min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+
                 {createdTokenRaw && (
                   <div className="mt-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
                     <div className="flex items-center justify-between">
@@ -887,13 +903,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(createdTokenRaw);
+                          if (navigator?.clipboard?.writeText) {
+                            navigator.clipboard.writeText(createdTokenRaw).catch(() => {});
+                          }
                           hapticTap();
                           showSavedNotification();
                         }}
-                        className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 hover:text-white px-2 py-1 rounded bg-emerald-500/20"
+                        className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 hover:text-white px-3 py-1.5 rounded bg-emerald-500/20 min-h-[44px]"
                       >
-                        <Copy className="w-3 h-3" />
+                        <Copy className="w-3.5 h-3.5" />
                         <span>Copy</span>
                       </button>
                     </div>
@@ -910,12 +928,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     placeholder="Token label (e.g. My Laptop CLI, Raycast)"
                     value={newTokenName}
                     onChange={(e) => setNewTokenName(e.target.value)}
-                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500 min-h-[44px]"
                   />
                   <button
                     type="button"
                     disabled={!newTokenName.trim()}
                     onClick={async () => {
+                      setTokenError(null);
                       try {
                         const res = await createApiToken(newTokenName.trim(), 'read,write', 90);
                         setCreatedTokenRaw(res.token);
@@ -924,10 +943,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         setTokens(updated);
                         hapticTap();
                       } catch (err: any) {
-                        alert(err.message);
+                        setTokenError(err.message || 'Failed to generate token');
                       }
                     }}
-                    className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-black font-bold text-xs transition"
+                    className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-black font-bold text-xs transition min-h-[44px] flex items-center justify-center shrink-0"
                   >
                     Generate
                   </button>
@@ -963,7 +982,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             setTokens(updated);
                             hapticTap();
                           }}
-                          className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-lg transition"
+                          className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-lg transition min-h-[44px] min-w-[44px] flex items-center justify-center"
                           title="Revoke Token"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -986,6 +1005,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </p>
                 </div>
 
+                {webhookError && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-center justify-between">
+                    <span>{webhookError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setWebhookError(null)}
+                      className="text-red-400 hover:text-red-300 font-bold ml-2 p-1 text-sm min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+
+                {createdWebhookSecret && (
+                  <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-400">
+                        Signing Secret for "{createdWebhookSecret.name}" (Copy Now — Won't Be Shown Again):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator?.clipboard?.writeText) {
+                            navigator.clipboard.writeText(createdWebhookSecret.secret).catch(() => {});
+                          }
+                          hapticTap();
+                          showSavedNotification();
+                        }}
+                        className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 hover:text-white px-3 py-1.5 rounded bg-emerald-500/20 min-h-[44px]"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy</span>
+                      </button>
+                    </div>
+                    <code className="block text-xs font-mono text-zinc-200 bg-zinc-950 p-2 rounded border border-zinc-800 break-all select-all">
+                      {createdWebhookSecret.secret}
+                    </code>
+                  </div>
+                )}
+
                 {/* Create webhook form */}
                 <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -994,44 +1053,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       placeholder="Webhook name (e.g. Home Assistant Kitchen)"
                       value={newWebhookName}
                       onChange={(e) => setNewWebhookName(e.target.value)}
-                      className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                      className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500 min-h-[44px]"
                     />
                     <input
                       type="url"
                       placeholder="Payload URL (https://...)"
                       value={newWebhookUrl}
                       onChange={(e) => setNewWebhookUrl(e.target.value)}
-                      className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                      className="bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500 min-h-[44px]"
                     />
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
                     <input
                       type="text"
                       placeholder="Events filter: item.created,form_entry.submitted,counter.threshold,timer.completed or *"
                       value={newWebhookEvents}
                       onChange={(e) => setNewWebhookEvents(e.target.value)}
-                      className="flex-1 bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                      className="flex-1 bg-zinc-900 border border-zinc-700/80 rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-brand-500 min-h-[44px]"
                     />
                     <button
                       type="button"
                       disabled={!newWebhookName.trim() || !newWebhookUrl.trim()}
                       onClick={async () => {
+                        setWebhookError(null);
                         try {
-                          await createWebhook({
+                          const res = await createWebhook({
                             name: newWebhookName.trim(),
                             url: newWebhookUrl.trim(),
                             events: newWebhookEvents.trim() || '*'
                           });
+                          if (res.secret) {
+                            setCreatedWebhookSecret({ name: res.name, secret: res.secret });
+                          }
                           setNewWebhookName('');
                           setNewWebhookUrl('');
                           const updated = await fetchWebhooks();
                           setWebhooks(updated);
                           hapticTap();
                         } catch (err: any) {
-                          alert(err.message);
+                          setWebhookError(err.message || 'Failed to create webhook');
                         }
                       }}
-                      className="px-3.5 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-black font-bold text-xs transition shrink-0"
+                      className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-black font-bold text-xs transition shrink-0 min-h-[44px] flex items-center justify-center"
                     >
                       Add Hook
                     </button>
@@ -1076,7 +1139,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                   setWebhookTestStatus((s) => ({ ...s, [hook.id]: 'Error' }));
                                 }
                               }}
-                              className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-bold transition"
+                              className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-bold transition min-h-[44px] flex items-center justify-center"
                             >
                               {webhookTestStatus[hook.id] || 'Test Ping'}
                             </button>
@@ -1087,7 +1150,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 const updated = await fetchWebhooks();
                                 setWebhooks(updated);
                               }}
-                              className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] transition"
+                              className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] transition min-h-[44px] flex items-center justify-center"
                             >
                               {hook.is_active ? 'Pause' : 'Resume'}
                             </button>
@@ -1098,7 +1161,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 const updated = await fetchWebhooks();
                                 setWebhooks(updated);
                               }}
-                              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-lg transition"
+                              className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded-lg transition min-h-[44px] min-w-[44px] flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1108,7 +1171,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="text-[11px] text-zinc-500 flex items-center gap-2">
                           <span>Events: {hook.events}</span>
                           <span>•</span>
-                          <span>Secret: {hook.secret.substring(0, 8)}...</span>
+                          <span>Secret: {hook.secret ? `${hook.secret.substring(0, 8)}...` : 'Configured (HMAC-SHA256)'}</span>
                         </div>
                       </div>
                     ))
@@ -1178,7 +1241,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="button"
                     disabled={isImporting}
                     onClick={() => obsidianInputRef.current?.click()}
-                    className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center gap-2"
+                    className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center gap-2 min-h-[44px]"
                   >
                     <Upload className="w-4 h-4" />
                     <span>Upload Obsidian Vault (.zip)</span>
@@ -1197,22 +1260,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </div>
                   <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Upload your Google Takeout Keep JSON files. Checklist items are automatically converted to GFM checkboxes and labels become tags.
+                    Upload one or more Google Takeout Keep JSON files. Checklist items are automatically converted to GFM checkboxes and labels become tags.
                   </p>
                   <input
                     ref={keepInputRef}
                     type="file"
                     accept=".json,application/json"
+                    multiple
                     className="hidden"
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
                       setIsImporting(true);
-                      setImportStatus('Parsing Google Keep JSON notes...');
+                      setImportStatus(`Parsing ${files.length} Google Keep JSON file${files.length > 1 ? 's' : ''}...`);
                       try {
-                        const text = await file.text();
-                        const json = JSON.parse(text);
-                        const res = await importGoogleKeep(json);
+                        const allNotes: any[] = [];
+                        for (const file of files) {
+                          try {
+                            const text = await file.text();
+                            const json = JSON.parse(text);
+                            if (Array.isArray(json)) allNotes.push(...json);
+                            else allNotes.push(json);
+                          } catch {}
+                        }
+                        const res = await importGoogleKeep(allNotes);
                         setImportStatus(res.message);
                         hapticTap();
                       } catch (err: any) {
@@ -1226,7 +1297,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="button"
                     disabled={isImporting}
                     onClick={() => keepInputRef.current?.click()}
-                    className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center gap-2"
+                    className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center justify-center gap-2 min-h-[44px]"
                   >
                     <Upload className="w-4 h-4" />
                     <span>Upload Google Keep (.json)</span>

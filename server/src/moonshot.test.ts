@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import { db, initDatabase } from './db/index.js';
 import { runMigrations } from './db/migrator.js';
 import { exportRoutes } from './routes/export.js';
+import { importRoutes } from './routes/import.js';
 import { webhookAndTokenRoutes } from './routes/webhooks.js';
 import { itemRoutes } from './routes/items.js';
 import { hashToken } from './services/auth.js';
@@ -46,6 +47,7 @@ describe('Moonshot Features (Vault Importers, Webhooks, PATs)', () => {
 
     await app.register(itemRoutes);
     await app.register(exportRoutes);
+    await app.register(importRoutes);
     await app.register(webhookAndTokenRoutes);
     await app.ready();
   });

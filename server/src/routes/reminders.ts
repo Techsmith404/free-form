@@ -9,8 +9,20 @@ import {
   snoozeReminder,
   deleteReminder
 } from '../services/realtime.js';
+import { ownerIdOf } from '../services/owner.js';
 
 export async function reminderRoutes(fastify: FastifyInstance) {
+  // Ownership guard for every `:id` route in this plugin: other users' rows look like 404s.
+  fastify.addHook('preHandler', async (request, reply) => {
+    const id = (request.params as { id?: string } | undefined)?.id;
+    if (!id) return;
+    const row = getReminderById(id) as { user_id?: string | null } | undefined | null;
+    const me = (request as any).user?.id as string | undefined;
+    if (row && row.user_id && me && row.user_id !== me) {
+      return reply.code(404).send({ error: 'Reminder not found' });
+    }
+  });
+
   // Get all reminders
   fastify.get('/api/reminders', async (request) => {
     const userId = (request as any).user?.id;
@@ -29,7 +41,6 @@ export async function reminderRoutes(fastify: FastifyInstance) {
 
   // Create reminder
   fastify.post('/api/reminders', async (request, reply) => {
-    const userId = (request as any).user?.id;
     const body = request.body as any;
     if (!body || !body.title?.trim() || !body.due_date) {
       return reply.code(400).send({ error: 'Title and valid due_date are required' });
@@ -41,7 +52,7 @@ export async function reminderRoutes(fastify: FastifyInstance) {
       due_date: new Date(body.due_date).toISOString(),
       priority: body.priority || 'normal',
       notebook_id: body.notebook_id || null,
-      user_id: userId || null
+      user_id: ownerIdOf(request)
     });
 
     return reply.code(201).send(reminder);

@@ -20,18 +20,11 @@ export function syncItemLinks(itemId: string, content: string | null | undefined
   run();
 }
 
-/** Re-parse links for an item from its stored content, or all items if omitted. */
-export function refreshItemLinks(itemId?: string): void {
-  if (itemId) {
-    const row = db.prepare('SELECT content FROM items WHERE id = ?').get(itemId) as { content: string } | undefined;
-    if (!row) return;
-    syncItemLinks(itemId, row.content);
-  } else {
-    const rows = db.prepare("SELECT id, content FROM items WHERE content LIKE '%[[%'").all() as { id: string; content: string }[];
-    for (const r of rows) {
-      syncItemLinks(r.id, r.content);
-    }
-  }
+/** Re-parse links for an item from its stored content (for write paths that don't hold the content). */
+export function refreshItemLinks(itemId: string): void {
+  const row = db.prepare('SELECT content FROM items WHERE id = ?').get(itemId) as { content: string } | undefined;
+  if (!row) return;
+  syncItemLinks(itemId, row.content);
 }
 
 interface LinkedItemRow {

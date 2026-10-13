@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import crypto from 'crypto';
+import { ownerIdOf } from '../services/owner.js';
 
 export async function tagRoutes(fastify: FastifyInstance) {
   // Get all tags with item count
@@ -30,7 +31,7 @@ export async function tagRoutes(fastify: FastifyInstance) {
   // Create or get tag
   fastify.post('/api/tags', async (request, reply) => {
     const { name, color } = request.body as { name: string; color?: string };
-    const userId = (request as any).user?.id || null;
+    const userId = ownerIdOf(request);
     const cleanName = name?.trim();
     if (!cleanName) {
       return reply.code(400).send({ error: 'Tag name is required' });
@@ -55,7 +56,13 @@ export async function tagRoutes(fastify: FastifyInstance) {
   // Delete tag
   fastify.delete('/api/tags/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+    const scopeId = (request as any).user?.id as string | undefined;
+    const result = scopeId
+      ? db.prepare('DELETE FROM tags WHERE id = ? AND (user_id = ? OR user_id IS NULL)').run(id, scopeId)
+      : db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+    if (result.changes === 0) {
+      return reply.code(404).send({ error: 'Tag not found' });
+    }
     return { success: true, id };
   });
 }

@@ -21,10 +21,10 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapedMetadata> {
   const cleanUrl = parsedUrl.toString();
   const domain = parsedUrl.hostname;
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
 
+  try {
     const response = await fetch(cleanUrl, {
       signal: controller.signal,
       headers: {
@@ -32,7 +32,6 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapedMetadata> {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
       }
     });
-    clearTimeout(timeout);
 
     if (!response.ok) {
       return {
@@ -45,7 +44,8 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapedMetadata> {
       };
     }
 
-    const html = await response.text();
+    // Only the <head> matters, so cap the body (the abort timer above also covers this read).
+    const html = await readTextCapped(response, MAX_SCRAPE_BYTES);
     const $ = cheerio.load(html);
 
     const title =
@@ -111,5 +111,24 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapedMetadata> {
       favicon: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
       siteName: domain
     };
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+const MAX_SCRAPE_BYTES = 1024 * 1024; // 1 MB is plenty to reach <head> metadata
+
+async function readTextCapped(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (total < maxBytes) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.length;
+  }
+  await reader.cancel().catch(() => {});
+  return Buffer.concat(chunks).toString('utf8');
 }

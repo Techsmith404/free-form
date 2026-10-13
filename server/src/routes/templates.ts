@@ -3,8 +3,20 @@ import { db } from '../db/index.js';
 import crypto from 'crypto';
 import { generateMarkdownFromForm } from '../services/markdown.js';
 import { FormTemplate } from '../types/index.js';
+import { ownerIdOf } from '../services/owner.js';
 
 export async function templateRoutes(fastify: FastifyInstance) {
+  // Ownership guard for every `:id` route in this plugin: other users' templates look like 404s.
+  fastify.addHook('preHandler', async (request, reply) => {
+    const id = (request.params as { id?: string } | undefined)?.id;
+    if (!id) return;
+    const row = db.prepare('SELECT user_id FROM templates WHERE id = ?').get(id) as { user_id?: string | null } | undefined;
+    const me = (request as any).user?.id as string | undefined;
+    if (row && row.user_id && me && row.user_id !== me) {
+      return reply.code(404).send({ error: 'Template not found' });
+    }
+  });
+
   // List all templates
   fastify.get('/api/templates', async (request) => {
     const userId = (request as any).user?.id;
@@ -56,7 +68,7 @@ export async function templateRoutes(fastify: FastifyInstance) {
   // Create template
   fastify.post('/api/templates', async (request, reply) => {
     const body = request.body as any;
-    const userId = (request as any).user?.id || null;
+    const userId = ownerIdOf(request);
     const id = body.id || `tpl-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 

@@ -19,6 +19,8 @@ import { syncRoutes } from './routes/sync.js';
 import { conflictsRoutes } from './routes/conflicts.js';
 import { healthRoutes } from './routes/health.js';
 import { webhookAndTokenRoutes } from './routes/webhooks.js';
+import { importRoutes } from './routes/import.js';
+import { resolvePat, isPatRequestAllowed } from './services/tokens.js';
 import { addClient, startRealtimeTicker, stopRealtimeTicker } from './services/realtime.js';
 
 import crypto from 'crypto';
@@ -84,34 +86,15 @@ async function main() {
           updated_at: sessionRow.updated_at
         };
       } else {
-        // Check if token matches a Personal Access Token (PAT)
-        const patRow = db.prepare(`
-          SELECT p.*, u.id as user_id, u.username, u.email, u.role, u.created_at as u_created_at, u.updated_at as u_updated_at
-          FROM api_tokens p
-          LEFT JOIN users u ON p.user_id = u.id
-          WHERE p.token_hash = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
-        `).get(tokenHash, new Date().toISOString()) as any;
-
-        if (patRow) {
-          if (patRow.user_id) {
-            resolvedUser = {
-              id: patRow.user_id,
-              username: patRow.username,
-              email: patRow.email,
-              role: patRow.role,
-              created_at: patRow.u_created_at,
-              updated_at: patRow.u_updated_at
-            };
-          } else {
-            // Unscoped / system token
-            resolvedUser = {
-              id: 'usr-pat-system',
-              username: patRow.name || 'api-token',
-              role: 'owner',
-              created_at: patRow.created_at,
-              updated_at: patRow.created_at
-            };
+        // Personal Access Token (ff_pat_...) for CLI / automation clients
+        const pat = resolvePat(token);
+        if (pat) {
+          const pathOnly = request.url.split('?')[0];
+          const allowed = isPatRequestAllowed(request.method, pathOnly, pat.scopes);
+          if (!allowed.ok) {
+            return reply.code(403).send({ error: allowed.error });
           }
+          resolvedUser = pat.user;
         }
       }
     }
@@ -184,11 +167,16 @@ async function main() {
     }
   });
 
-  // Serve static uploads
+  // Serve static uploads. User-supplied files are served from the app origin, so lock them
+  // down: no script execution (sandboxed CSP) and no MIME sniffing.
   await app.register(fastifyStatic, {
     root: UPLOADS_DIR,
     prefix: '/uploads/',
-    decorateReply: false
+    decorateReply: false,
+    setHeaders: (res) => {
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    }
   });
 
   // WebSocket real-time broadcast endpoint with user partition
@@ -212,6 +200,7 @@ async function main() {
   await app.register(conflictsRoutes);
   await app.register(healthRoutes);
   await app.register(webhookAndTokenRoutes);
+  await app.register(importRoutes);
 
   // Start background timer/reminder ticker
   startRealtimeTicker();

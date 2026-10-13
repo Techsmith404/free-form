@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { pipeline } from 'stream/promises';
 import { UPLOADS_DIR } from '../db/index.js';
 import { scrapeUrl } from '../services/scraper.js';
+import { sanitizeSvg, IMAGE_EXTENSIONS } from '../services/svg.js';
 
 export async function uploadRoutes(fastify: FastifyInstance) {
   // Scrape URL metadata for bookmark creation
@@ -29,27 +30,29 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: 'No file uploaded' });
     }
 
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
-    if (!allowedMimes.includes(data.mimetype)) {
+    // The stored extension comes from the validated MIME type, never from the client-supplied
+    // filename (otherwise "x.html" with an image/png part would be stored and served as HTML).
+    const ext = IMAGE_EXTENSIONS[data.mimetype];
+    if (!ext) {
       return reply.code(400).send({ error: 'Invalid file type. Only images are allowed.' });
     }
 
-    const ext = path.extname(data.filename).toLowerCase();
     const filename = `${crypto.randomUUID()}${ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
 
-    if (data.mimetype === 'image/svg+xml' || ext === '.svg') {
-      let fileContent = '';
+    if (ext === '.svg') {
+      const chunks: Buffer[] = [];
       for await (const chunk of data.file) {
-        fileContent += chunk;
+        chunks.push(chunk as Buffer);
       }
-      const sanitized = fileContent
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/\b(onclick|onerror|onload|onmouseover)\s*=\s*"[^"]*"/gi, '')
-        .replace(/<foreignObject\b[^<]*(?:(?!<\/foreignObject>)<[^<]*)*<\/foreignObject>/gi, '');
-      await fs.promises.writeFile(filePath, sanitized);
+      await fs.promises.writeFile(filePath, sanitizeSvg(Buffer.concat(chunks).toString('utf8')));
     } else {
       await pipeline(data.file, fs.createWriteStream(filePath));
+    }
+
+    if (data.file.truncated) {
+      await fs.promises.unlink(filePath).catch(() => {});
+      return reply.code(413).send({ error: 'File is too large (50 MB limit)' });
     }
 
     return {
@@ -61,27 +64,33 @@ export async function uploadRoutes(fastify: FastifyInstance) {
 
   // Upload base64 image (useful for signature pad & clipboard pastes)
   fastify.post('/api/upload-base64', async (request, reply) => {
-    const { base64Data, filename: originalName } = request.body as {
-      base64Data: string;
+    const { base64Data, filename: originalName } = (request.body || {}) as {
+      base64Data?: string;
       filename?: string;
     };
 
-    if (!base64Data) {
+    if (!base64Data || typeof base64Data !== 'string') {
       return reply.code(400).send({ error: 'base64Data is required' });
     }
 
-    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    let buffer: Buffer;
+    const matches = base64Data.match(/^data:([A-Za-z0-9.+\/-]+);base64,(.+)$/s);
     let ext = '.png';
+    let buffer: Buffer;
 
-    if (matches && matches.length === 3) {
-      const mime = matches[1];
-      if (mime.includes('jpeg') || mime.includes('jpg')) ext = '.jpg';
-      else if (mime.includes('svg')) ext = '.svg';
-      else if (mime.includes('webp')) ext = '.webp';
+    if (matches) {
+      const mime = matches[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : matches[1].toLowerCase();
+      const mapped = IMAGE_EXTENSIONS[mime];
+      if (!mapped) {
+        return reply.code(400).send({ error: 'Invalid file type. Only images are allowed.' });
+      }
+      ext = mapped;
       buffer = Buffer.from(matches[2], 'base64');
     } else {
       buffer = Buffer.from(base64Data, 'base64');
+    }
+
+    if (ext === '.svg') {
+      buffer = Buffer.from(sanitizeSvg(buffer.toString('utf8')), 'utf8');
     }
 
     const filename = `${crypto.randomUUID()}${ext}`;

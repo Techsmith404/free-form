@@ -5,10 +5,11 @@ import { generateMarkdownFromForm } from '../services/markdown.js';
 import { broadcast } from '../services/realtime.js';
 import crypto from 'crypto';
 import { refreshItemLinks } from '../services/links.js';
+import { ownerIdOf } from '../services/owner.js';
 
 export const syncRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: SyncRequestBody }>('/api/sync', async (request, reply) => {
-    const userId = (request as any).user?.id || null;
+    const userId = ownerIdOf(request);
     const { device_name = 'Unknown Device', last_sync_timestamp, mutations = [] } = request.body || {};
     const serverTime = new Date().toISOString();
     const processedIds: string[] = [];
