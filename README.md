@@ -80,9 +80,15 @@ Most note apps force you into one of two extremes:
 * **Mobile Back Navigation**: Navbar back button is `h-11` pill-shaped with brand accent chevron. Mobile search bar is `h-12`, auto-focuses on open, and closes cleanly on clear.
 * **Offline Caching**: Built with `vite-plugin-pwa` and Workbox for fast cache-first asset loading and offline resilience.
 
-### 5. 🗄️ Local-First & Exportable
+### 5. 🗄️ Local-First, Workspace Backup & PDF Export
 * **Embedded SQLite WAL**: Zero-latency database with Write-Ahead Logging and automatic schema migrations.
 * **One-Click Workspace Backup**: Download your entire workspace as a ZIP archive containing notebooks as folders, notes as clean `.md` files, and `free-form-backup.json`.
+* **Notebook PDF Export Engine**: Export entire notebooks or custom note selections as cohesive, publication-ready PDF documents powered by server-side headless Chromium (`puppeteer-core`).
+  * **Interactive Note Selection**: Checkbox toggling for individual notes, quick Select All / Deselect All, and real-time selection count badges.
+  * **Custom Sequence Reordering**: Reorder notes via intuitive drag-and-drop handles (`GripVertical`) or accessible step controls (`ChevronUp` / `ChevronDown`) to dictate the exact order of appearance in the PDF.
+  * **Search Filter**: Filter notes dynamically within large notebooks without disrupting current selections or reordering state.
+  * **Fidelity & Invariant Preservation**: Renders TipTap task lists (`- [ ]`, `- [x]`), tables, fenced code blocks, blockquotes, `[[wikilinks]]`, tags, counters, and local image attachments with clean pagination rules.
+  * **Accessible Everywhere**: Launch directly from Sidebar notebook actions, the active Navbar header, multi-select Bulk Action Bar (`PDF`), or Command Palette (`Ctrl+K` / `Cmd+K`).
 
 ### 6. ⏱️ Universal Synced Timers & Reminders (Real-Time WebSockets)
 * **Cross-Device Synchronized Timers**: Set a timer on your desktop, phone, or laptop and watch it count down simultaneously in real-time across all active sessions.
@@ -128,6 +134,40 @@ Most note apps force you into one of two extremes:
   # Pomodoro timers
   freeform timer 25m "Deep Work Sprint"
   ```
+
+---
+
+## 📄 User Guide: Exporting Notebooks as PDF
+
+Free Form allows you to compile notebooks or curated note selections into paginated, print-ready PDF documents suitable for archiving, offline reading, or distribution.
+
+### 1. Launch the Export PDF Dialog
+Open the export modal from any convenient workflow in the application:
+* **Sidebar:** Hover over any notebook in the left sidebar and click the **Export Notebook as PDF** icon (`FileDown`).
+* **Active Notebook Navbar:** When browsing inside a notebook, click the **Export PDF** button in the top navigation bar next to "Add Note".
+* **Bulk Action Bar:** Multi-select notes across your feed and click the **PDF** button in the floating bottom action bar.
+* **Command Palette:** Press `Ctrl+K` (or `Cmd+K` on macOS), search for **Export Notebook to PDF**, and press Enter.
+
+### 2. Configure Title & Note Selection
+* **Document Title / Filename:** Enter a custom title at the top of the modal (defaults to the notebook name). This is printed at the top of the PDF and used as the default downloaded file name.
+* **Default Selection:** All notes in the notebook are selected by default (`Select All`).
+* **Granular Toggling:** Click the checkbox next to any note to include or exclude it from the export.
+* **Select All / Deselect All:** Click the top selection toggle to quickly select or deselect all notes.
+* **Search Filter:** Use the "Filter notes..." search box to quickly locate notes by title, markdown content, or tags in large notebooks. Filtering lets you review notes without resetting selections.
+
+### 3. Arrange Note Order (Drag & Drop or Step Arrows)
+The generated PDF arranges notes in the exact sequence shown in the modal:
+* **Drag-and-Drop:** Grab the grip handle (`GripVertical`) on the left side of any note row and drag it to the desired position. *(Note: Drag-and-drop is paused while an active search filter is applied).*
+* **Step Controls:** Click the `ChevronUp` (`↑`) or `ChevronDown` (`↓`) arrow buttons on the right side of any note row to move it up or down one position.
+* **Sequence Badges:** The sequence number (`#1`, `#2`, ...) updates dynamically to indicate the note's printed order.
+* **Reset Order:** Click the **Reset Order** button at any time to return to the initial sort (pinned notes first, followed by newest updated).
+
+### 4. Generate and Download
+* Click the **Export PDF** button in the modal footer.
+* The server renders the document using headless Chromium, embedding local images, rendering TipTap task lists (`- [ ]`, `- [x]`), formatting code blocks, tables, and tags, and enforcing clean page-break rules.
+* The browser automatically saves the generated `<filename>.pdf` file.
+
+---
 
 
 ## 🚀 Quick Start

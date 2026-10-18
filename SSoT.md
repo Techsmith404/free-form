@@ -59,24 +59,28 @@ free-form/
 │   │   │   ├── forms/          # Form Runner Modal & Template Builder Modal
 │   │   │   ├── items/          # Cards: Note, FormEntry, Counter, Bookmark, Poster, ItemListItem
 │   │   │   ├── layout/         # Sidebar (hierarchical tree), Navbar (filters, mobile back, timer pill)
-│   │   │   ├── modals/         # New Notebook, Bookmark, Counter, Poster, Markdown Viewer, Timers & Reminders, AlarmAlert, SettingsModal
-│   │   │   └── views/          # Templates View
-│   │   ├── context/            # RealtimeContext (WebSocket state, auto-reconnect, cross-device sync)
-│   │   ├── services/           # Web Audio API alarm synthesizer & Native Device Service (Haptics, Local Notifications)
-│   │   ├── types/              # Frontend TypeScript Interfaces & Types
-│   │   ├── App.tsx             # Main Application Shell & Navigation Controller
-│   │   ├── index.css           # Tailwind base, touch action & custom scrollbars
-│   │   └── main.tsx            # React root, Native App Init & Service Worker registration
-│   └── vite.config.ts          # Vite configuration & VitePWA Workbox setup
-├── server/                     # Fastify 5 + SQLite Backend
+│   │   ├── modals/         # New Notebook, Bookmark, Counter, Poster, Markdown Viewer, Timers & Reminders, AlarmAlert, SettingsModal, ExportPdfModal
+│   │   ├── utils/          # Client utilities: export helpers (renderItemToHtml, marked taskList), haptics, formatting
+│   │   ├── views/          # Templates View
+│   │   ├── context/        # RealtimeContext (WebSocket state, auto-reconnect, cross-device sync)
+│   │   ├── services/       # Web Audio API alarm synthesizer & Native Device Service (Haptics, Local Notifications)
+│   │   ├── types/          # Frontend TypeScript Interfaces & Types
+│   │   ├── App.tsx         # Main Application Shell & Navigation Controller
+│   │   ├── index.css       # Tailwind base, touch action & custom scrollbars
+│   │   └── main.tsx        # React root, Native App Init & Service Worker registration
+│   └── vite.config.ts      # Vite configuration & VitePWA Workbox setup
+├── server/                 # Fastify 5 + SQLite Backend
 │   ├── src/
-│   │   ├── db/                 # better-sqlite3 connection, WAL pragma, schema & migrations
-│   │   ├── routes/             # REST routes: items, notebooks, templates, timers, reminders, settings, upload, export
-│   │   ├── services/           # Form-to-Markdown generation, OpenGraph scraper & Realtime WebSocket ticker
-│   │   ├── types/              # Backend TypeScript Interfaces & Types
-│   │   ├── index.ts            # Fastify server bootstrap, WebSocket gateway & static file serving (with cache-busting)
-│   │   └── index.test.ts       # Vitest unit test suite (Core, Timers, Reminders)
+│   │   ├── db/             # better-sqlite3 connection, WAL pragma, schema & migrations
+│   │   ├── routes/         # REST routes: items, notebooks, templates, timers, reminders, settings, upload, export (ZIP & PDF)
+│   │   ├── services/       # Form-to-Markdown generation, OpenGraph scraper, Realtime WebSocket ticker & Headless Chromium PDF renderer (pdf.ts)
+│   │   ├── types/          # Backend TypeScript Interfaces & Types
+│   │   ├── index.ts        # Fastify server bootstrap, WebSocket gateway, static file serving & browser process cleanup
+│   │   ├── index.test.ts   # Vitest unit test suite (Core, Timers, Reminders)
+│   │   └── export.test.ts  # Vitest integration test suite for PDF generation & TipTap invariants
 │   └── tsconfig.json
+├── packages/shared/        # Shared TypeScript schemas, types, and validation contracts
+│   └── src/index.ts        # Zod schemas: PdfExportNoteItemSchema, PdfExportRequestSchema
 ├── android/                    # Native Android Studio Project (Capacitor)
 │   ├── app/src/main/
 │   │   ├── AndroidManifest.xml # Permissions (INTERNET, ALARMS, VIBRATE) & Cleartext LAN support
@@ -615,11 +619,15 @@ All endpoints are hosted under `/api/*` on Fastify:
   * `freeform list`
 * Global flags: `--url <server_url>`, `--token <pat_token>`.
 
-### Utilities & Security
+### Utilities, Export & Security
 * `POST /api/bookmarks/scrape`: Crawls a URL to extract OpenGraph metadata (`og:title`, `og:description`, `og:image`, `favicon`).
 * `POST /api/upload`: Multipart file upload for images and signatures; saved to `./data/uploads/` with MIME allowlist naming and SVG script sanitization.
 * `GET /uploads/*`: Static file handler protected with Content-Security-Policy sandbox and `X-Content-Type-Options: nosniff`.
 * `GET /api/export`: Generates and streams a full workspace backup ZIP containing markdown files and `free-form-backup.json`.
+* `POST /api/export/pdf`: Renders and streams a paginated, print-ready PDF document from an ordered collection of notes using headless Chromium (`puppeteer-core`).
+  * **Payload Options:** Supports `notes` (array of note items with `{ id, title, html, content, type, metadata, tags }`), `ids` (ordered note IDs to hydrate from SQLite), `html` (raw HTML string or string array), or `notebookId` (fallback to all active notes in the notebook). Optional `notebookName` / `title` and `filename`.
+  * **Security & IDOR Guard:** Enforces multi-tenant `user_id` isolation. Skips missing/inaccessible note IDs; rejects with `400 Bad Request` if no valid note payload remains.
+  * **Response:** Returns `200 OK` with `Content-Type: application/pdf`, `Content-Disposition: attachment; filename="<name>.pdf"`, and `%PDF-` binary stream.
 * `GET /api/health`: Health check returning `{ status: 'ok', time: '...' }`.
 
 ---
@@ -643,9 +651,10 @@ Detailed architectural blueprints and migration steps are maintained in [`.agent
 ## 13. Containerization, Self-Hosting & Local Testing
 
 ### Multi-Stage Dockerfile
-* **Stage 1 (`builder`):** Compiles client (Vite + TypeScript) and server (TypeScript).
-* **Stage 2 (`runner`):** Minimal `node:20-alpine` production image. Runs under unprivileged `node` user.
-* **Volume Mount:** Mounts `./data:/app/data` for persistent storage of `freeform.db` and `./uploads`.
+* **Stage 1 (`builder`):** Compiles shared package (`npm run build:shared`), client (Vite + TypeScript), and server (TypeScript).
+* **Stage 2 (`runner`):** `node:22-slim` production image with `tini` for PID 1 signal handling, `curl` for container health checks, and `chromium` + `fonts-liberation` for server-side headless PDF generation. Runs under unprivileged `node` user.
+* **Environment Variables:** `ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`, `ENV PORT=3000`, `ENV HOST=0.0.0.0`, `ENV DATA_DIR=/data`.
+* **Volume Mount:** Mounts `./data:/data` for persistent storage of `freeform.db` and `./uploads`.
 * **Port:** Exposes port `3000`.
 
 ### Local Test Script (`scripts/test-local.sh`)
@@ -773,6 +782,13 @@ When a mobile device running on cellular data (5G/LTE) opens the app with a loca
 ### 11. CSS Variable Scoping & Native Alert UX Integrity
 1. **Tailwind Palette Consistency vs. CSS Variables**: Dynamic UI components must avoid undeclared CSS custom properties (such as `var(--surface-primary)` or `var(--border-subtle)`) that do not exist in the root stylesheet, which causes transparent surfaces and unreadable contrast in modals like `ConflictResolverModal`. Always reference the established Tailwind color tokens (`bg-zinc-900`, `bg-zinc-950`, `text-zinc-100`, `text-zinc-400`, `border-zinc-800`).
 2. **Eradication of Browser `alert()` in Mobile PWAs**: Native Android WebViews and standalone PWA displays handle raw browser `alert()` calls synchronously, which can freeze interaction threads, disrupt full-screen gestures, or fail silently in background/locked states. All user feedback must use inline reactive error states (`setError`, `uploadError`) or non-blocking custom banners.
+
+### 12. Headless PDF Generation & TipTap Invariants
+1. **Nested Task List Bottom-Up Traversal**: In `server/src/services/pdf.ts`, `normalizeAndSanitizeTipTapHtml` processes task lists using bottom-up reverse DOM traversal (`$('li').toArray().reverse()`). Top-down traversal previously detached child `<li>` elements when rewriting parent inner HTML and mistakenly overwrote child checkbox states with the parent's `data-checked` attribute. Checkbox attribute synchronization is strictly scoped to `$li.children('label').find('input[type="checkbox"]')`.
+2. **Client-Server Marked Renderer Parity**: Because `ExportPdfModal` can pass pre-rendered HTML in note items (`renderItemToHtml`), `client/src/utils/export.ts` must use an identical Marked instance configured with `wikilinkMarkedExtension` and the TipTap `ul[data-type="taskList"]` / `li[data-type="taskItem"]` list renderer. Without this, wikilinks (`[[Page|Title]]`) and task lists would degrade to vanilla bullets before reaching the PDF engine.
+3. **Multi-Tenant IDOR Guard on Note Hydration**: In `server/src/routes/export.ts`, passing note objects containing only `{ id: "..." }` queries SQLite with `user_id = ? OR user_id IS NULL`. If the ID does not belong to the user or does not exist, `hasInlinePayload` ensures the entry is dropped rather than rendering an empty section, and rejects with `400 Bad Request` if no valid accessible notes remain.
+4. **Browser Lifecycle & Signal Trapping**: Headless Chromium instances are managed as a shared singleton via `getBrowser()` to avoid high process spawn overhead per request. The process is cleanly terminated via `closePdfBrowser()` bound to `SIGINT` and `SIGTERM` in `server/src/index.ts`.
+5. **Local Image Embedding**: Relative `/uploads/...` URLs cannot be fetched over the network inside sandboxed Chromium runners without depending on loopback network routes. `buildPdfHtmlDocument` inlines local uploads as base64 `data:<mime>;base64,...` data URIs directly from `./data/uploads/`.
 
 ---
 
