@@ -309,6 +309,14 @@ export async function exportRoutes(fastify: FastifyInstance) {
           }
         } else if (entry && typeof entry === 'object') {
           const dbRow = entry.id ? dbItemMap.get(entry.id) : undefined;
+          const hasInlinePayload =
+            Boolean(entry.html && String(entry.html).trim()) ||
+            entry.content !== undefined ||
+            entry.markdown !== undefined ||
+            Boolean(entry.title && String(entry.title).trim());
+          if (!dbRow && !hasInlinePayload) {
+            continue;
+          }
           let tags = entry.tags;
           if (!tags && dbRow?.id) {
             tags = db

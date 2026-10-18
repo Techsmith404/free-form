@@ -29,6 +29,114 @@ export interface ExportPdfModalProps {
   onSuccess?: () => void;
 }
 
+export function sortInitialExportNotes(notes: Item[]): Item[] {
+  return [...notes].sort((a, b) => {
+    if (Boolean(b.is_pinned) !== Boolean(a.is_pinned)) {
+      return (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0);
+    }
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  });
+}
+
+export function toggleExportNoteSelection(selectedIds: Set<string>, id: string): Set<string> {
+  const next = new Set(selectedIds);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+  return next;
+}
+
+export function toggleSelectAllExportNotes(selectedIds: Set<string>, orderedNotes: Item[]): Set<string> {
+  const allSelected = orderedNotes.length > 0 && selectedIds.size === orderedNotes.length;
+  if (allSelected) {
+    return new Set();
+  }
+  return new Set(orderedNotes.map((n) => n.id));
+}
+
+export function moveExportNoteUp(orderedNotes: Item[], fullIndex: number): Item[] {
+  if (fullIndex <= 0 || fullIndex >= orderedNotes.length) return orderedNotes;
+  const next = [...orderedNotes];
+  const temp = next[fullIndex];
+  next[fullIndex] = next[fullIndex - 1];
+  next[fullIndex - 1] = temp;
+  return next;
+}
+
+export function moveExportNoteDown(orderedNotes: Item[], fullIndex: number): Item[] {
+  if (fullIndex < 0 || fullIndex >= orderedNotes.length - 1) return orderedNotes;
+  const next = [...orderedNotes];
+  const temp = next[fullIndex];
+  next[fullIndex] = next[fullIndex + 1];
+  next[fullIndex + 1] = temp;
+  return next;
+}
+
+export function reorderExportNotesByDrag(
+  orderedNotes: Item[],
+  fromIndex: number,
+  toIndex: number
+): Item[] {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= orderedNotes.length ||
+    toIndex >= orderedNotes.length ||
+    fromIndex === toIndex
+  ) {
+    return orderedNotes;
+  }
+  const next = [...orderedNotes];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
+}
+
+export function filterExportNotes(orderedNotes: Item[], searchQuery: string): Item[] {
+  const q = searchQuery.trim().toLowerCase();
+  if (!q) return orderedNotes;
+  return orderedNotes.filter((note) => {
+    const matchTitle = (note.title || '').toLowerCase().includes(q);
+    const matchContent = (note.content || '').toLowerCase().includes(q);
+    const matchTags =
+      Array.isArray(note.tags) &&
+      note.tags.some((t: any) => {
+        const name = typeof t === 'string' ? t : t?.name;
+        return name && name.toLowerCase().includes(q);
+      });
+    return matchTitle || matchContent || matchTags;
+  });
+}
+
+export function buildPdfExportPayload(options: {
+  notebook?: Notebook | null;
+  documentTitle: string;
+  orderedNotes: Item[];
+  selectedIds: Set<string>;
+}) {
+  const selectedNotes = options.orderedNotes.filter((n) => options.selectedIds.has(n.id));
+  const payloadNotes = selectedNotes.map((note) => ({
+    id: note.id,
+    title: note.title,
+    html: renderItemToHtml(note),
+    content: note.content,
+    type: note.type,
+    metadata: note.metadata,
+    tags: note.tags,
+    created_at: note.created_at,
+    updated_at: note.updated_at
+  }));
+
+  return {
+    notebookId: options.notebook?.id,
+    notebookName: options.documentTitle.trim() || options.notebook?.name || 'Notebook Export',
+    notes: payloadNotes,
+    ids: selectedNotes.map((n) => n.id)
+  };
+}
+
 export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   isOpen,
   onClose,
@@ -36,9 +144,13 @@ export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   notes = [],
   onSuccess
 }) => {
-  const [orderedNotes, setOrderedNotes] = useState<Item[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [documentTitle, setDocumentTitle] = useState<string>('');
+  const [orderedNotes, setOrderedNotes] = useState<Item[]>(() => sortInitialExportNotes(notes));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(sortInitialExportNotes(notes).map((n) => n.id))
+  );
+  const [documentTitle, setDocumentTitle] = useState<string>(
+    () => notebook?.name || 'Notebook Export'
+  );
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -50,13 +162,7 @@ export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   // Initialize state when modal opens or notes change
   useEffect(() => {
     if (isOpen) {
-      const initialSorted = [...notes].sort((a, b) => {
-        if (Boolean(b.is_pinned) !== Boolean(a.is_pinned)) {
-          return (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0);
-        }
-        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-      });
-
+      const initialSorted = sortInitialExportNotes(notes);
       setOrderedNotes(initialSorted);
       // Default: all notes selected (Requirement 2)
       setSelectedIds(new Set(initialSorted.map((n) => n.id)));
@@ -70,19 +176,10 @@ export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   }, [isOpen, notes, notebook]);
 
   // Filtered notes for search query
-  const filteredNotes = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return orderedNotes;
-    return orderedNotes.filter((note) => {
-      const matchTitle = (note.title || '').toLowerCase().includes(q);
-      const matchContent = (note.content || '').toLowerCase().includes(q);
-      const matchTags = Array.isArray(note.tags) && note.tags.some((t: any) => {
-        const name = typeof t === 'string' ? t : t?.name;
-        return name && name.toLowerCase().includes(q);
-      });
-      return matchTitle || matchContent || matchTags;
-    });
-  }, [orderedNotes, searchQuery]);
+  const filteredNotes = useMemo(
+    () => filterExportNotes(orderedNotes, searchQuery),
+    [orderedNotes, searchQuery]
+  );
 
   if (!isOpen) return null;
 
@@ -93,63 +190,33 @@ export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
   // Toggle selection for a single note
   const handleToggleSelect = (id: string) => {
     hapticTap();
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    setSelectedIds((prev) => toggleExportNoteSelection(prev, id));
   };
 
   // Select all or deselect all
   const handleToggleSelectAll = () => {
     hapticTap();
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(orderedNotes.map((n) => n.id)));
-    }
+    setSelectedIds((prev) => toggleSelectAllExportNotes(prev, orderedNotes));
   };
 
   // Reorder: Move Up
   const handleMoveUp = (fullIndex: number) => {
     if (fullIndex <= 0) return;
     hapticTap();
-    setOrderedNotes((prev) => {
-      const next = [...prev];
-      const temp = next[fullIndex];
-      next[fullIndex] = next[fullIndex - 1];
-      next[fullIndex - 1] = temp;
-      return next;
-    });
+    setOrderedNotes((prev) => moveExportNoteUp(prev, fullIndex));
   };
 
   // Reorder: Move Down
   const handleMoveDown = (fullIndex: number) => {
     if (fullIndex >= orderedNotes.length - 1) return;
     hapticTap();
-    setOrderedNotes((prev) => {
-      const next = [...prev];
-      const temp = next[fullIndex];
-      next[fullIndex] = next[fullIndex + 1];
-      next[fullIndex + 1] = temp;
-      return next;
-    });
+    setOrderedNotes((prev) => moveExportNoteDown(prev, fullIndex));
   };
 
   // Reset to initial order
   const handleResetOrder = () => {
     hapticTap();
-    const initialSorted = [...notes].sort((a, b) => {
-      if (Boolean(b.is_pinned) !== Boolean(a.is_pinned)) {
-        return (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0);
-      }
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-    });
-    setOrderedNotes(initialSorted);
+    setOrderedNotes(sortInitialExportNotes(notes));
   };
 
   // Drag and Drop Handlers
@@ -184,12 +251,7 @@ export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
     }
 
     hapticTap();
-    setOrderedNotes((prev) => {
-      const next = [...prev];
-      const [item] = next.splice(draggedIndex, 1);
-      next.splice(targetIndex, 0, item);
-      return next;
-    });
+    setOrderedNotes((prev) => reorderExportNotesByDrag(prev, draggedIndex, targetIndex));
 
     setDraggedIndex(null);
     setDragOverIndex(null);
@@ -202,32 +264,19 @@ export const ExportPdfModal: React.FC<ExportPdfModalProps> = ({
 
   // PDF Export submission
   const handleExport = async () => {
-    const selectedNotes = orderedNotes.filter((n) => selectedIds.has(n.id));
-    if (selectedNotes.length === 0) return;
+    const payload = buildPdfExportPayload({
+      notebook,
+      documentTitle,
+      orderedNotes,
+      selectedIds
+    });
+    if (payload.notes.length === 0) return;
 
     setIsExporting(true);
     setErrorMessage(null);
 
     try {
-      // Build note objects with pre-rendered TipTap-compatible HTML
-      const payloadNotes = selectedNotes.map((note) => ({
-        id: note.id,
-        title: note.title,
-        html: renderItemToHtml(note),
-        content: note.content,
-        type: note.type,
-        metadata: note.metadata,
-        tags: note.tags,
-        created_at: note.created_at,
-        updated_at: note.updated_at
-      }));
-
-      await exportPdf({
-        notebookId: notebook?.id,
-        notebookName: documentTitle.trim() || notebook?.name || 'Notebook Export',
-        notes: payloadNotes,
-        ids: selectedNotes.map((n) => n.id)
-      });
+      await exportPdf(payload);
 
       hapticMedium();
       onSuccess?.();

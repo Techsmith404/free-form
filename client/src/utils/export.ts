@@ -1,13 +1,59 @@
-import { marked } from 'marked';
+import { Marked, marked } from 'marked';
 import { Item } from '../types/index.js';
+import { wikilinkMarkedExtension } from './wikilinks.js';
+
+function renderTipTapMarkdown(markdown: string): string {
+  if (!markdown || !markdown.trim()) return '';
+  const markedInstance = new Marked(
+    {
+      gfm: true,
+      breaks: false,
+      renderer: {
+        list(token) {
+          const isTaskList = token.items && token.items.some((i: any) => i.task);
+          let body = '';
+          for (let j = 0; j < token.items.length; j++) {
+            body += this.listitem(token.items[j]);
+          }
+          if (isTaskList) {
+            return `<ul data-type="taskList">\n${body}</ul>\n`;
+          }
+          const type = token.ordered ? 'ol' : 'ul';
+          const startAttr = token.ordered && token.start !== 1 ? ` start="${token.start}"` : '';
+          return `<${type}${startAttr}>\n${body}</${type}>\n`;
+        },
+        listitem(item: any) {
+          if (item.task) {
+            const isChecked = Boolean(item.checked);
+            const body = (this.parser.parse as any)(item.tokens, Boolean(item.loose));
+            return `<li data-type="taskItem" data-checked="${isChecked}"><label><input type="checkbox" ${isChecked ? 'checked="checked"' : ''} disabled="disabled" /><span></span></label><div>${body}</div></li>\n`;
+          }
+          const body = (this.parser.parse as any)(item.tokens, Boolean(item.loose));
+          return `<li>${body}</li>\n`;
+        }
+      }
+    },
+    { extensions: [wikilinkMarkedExtension] }
+  );
+  return markedInstance.parse(markdown) as string;
+}
 
 /**
- * Formats and renders any item (note, counter, bookmark, poster) into sanitized HTML
+ * Formats and renders any item (note, counter, bookmark, poster, form_entry) into TipTap-compatible HTML
  * ready for rich display, export, or PDF generation.
  */
 export function renderItemToHtml(item: Item): string {
   let content = item.content || '';
-  const meta = item.metadata || {};
+  const meta =
+    typeof item.metadata === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(item.metadata);
+          } catch {
+            return {};
+          }
+        })()
+      : item.metadata || {};
 
   if (item.type === 'counter') {
     const countVal = meta.count ?? meta.value ?? 0;
@@ -21,9 +67,14 @@ export function renderItemToHtml(item: Item): string {
       .map((img: any) => `![${img.caption || img.name || 'Image'}](${img.url})`)
       .join('\n\n');
     content = `${imgsMd}\n\n${content}`;
+  } else if (item.type === 'form_entry' && !content.trim() && meta.values && typeof meta.values === 'object') {
+    const entries = Object.entries(meta.values);
+    if (entries.length > 0) {
+      content = entries.map(([k, v]) => `- **${k}:** ${String(v ?? '')}`).join('\n');
+    }
   }
 
-  return marked.parse(content || '') as string;
+  return renderTipTapMarkdown(content || '');
 }
 
 /**

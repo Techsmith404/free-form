@@ -136,8 +136,11 @@ export function normalizeAndSanitizeTipTapHtml(rawHtml: string): string {
     }
   });
 
-  // Normalize plain GFM checkbox lists into TipTap `data-type="taskList"` structure if needed
-  $('li').each((_, liEl) => {
+  // Normalize plain GFM checkbox lists into TipTap `data-type="taskList"` structure if needed.
+  // Process bottom-up (innermost <li> first) so replacing innerHTML on a parent <li> does not
+  // detach or clobber nested task list items.
+  const liElements = $('li').toArray().reverse();
+  for (const liEl of liElements) {
     const $li = $(liEl);
     const directCheckbox = $li.find('> input[type="checkbox"], > p > input[type="checkbox"]').first();
     if ($li.attr('data-type') === 'taskItem') {
@@ -154,7 +157,11 @@ export function normalizeAndSanitizeTipTapHtml(rawHtml: string): string {
           `<label><input type="checkbox" ${isChecked ? 'checked="checked"' : ''} disabled="disabled" /><span></span></label><div>${innerHtml}</div>`
         );
       } else {
-        $li.find('input[type="checkbox"]').each((__, cb) => {
+        const ownCheckbox =
+          $li.children('label').find('input[type="checkbox"]').length > 0
+            ? $li.children('label').find('input[type="checkbox"]')
+            : directCheckbox;
+        ownCheckbox.each((__, cb) => {
           if (isChecked) {
             $(cb).attr('checked', 'checked');
           } else {
@@ -177,7 +184,7 @@ export function normalizeAndSanitizeTipTapHtml(rawHtml: string): string {
         `<label><input type="checkbox" ${isChecked ? 'checked="checked"' : ''} disabled="disabled" /><span></span></label><div>${innerHtml}</div>`
       );
     }
-  });
+  }
 
   // Resolve local /uploads/... images to base64 data URIs so headless browser renders them without network dependency
   $('img').each((_, imgEl) => {
@@ -236,6 +243,11 @@ export function renderNoteSectionHtml(note: PdfNoteSection): string {
       .map((img: any) => `![${img.caption || img.name || 'Image'}](${img.url})`)
       .join('\n\n');
     combinedMarkdown = `${imgsMd}\n\n${rawText}`;
+  } else if (note.type === 'form_entry' && !rawText.trim() && meta.values && typeof meta.values === 'object') {
+    const entries = Object.entries(meta.values);
+    if (entries.length > 0) {
+      combinedMarkdown = entries.map(([k, v]) => `- **${k}:** ${String(v ?? '')}`).join('\n');
+    }
   }
 
   // Detect if rawText looks like pre-rendered HTML (starts with a block HTML tag and has no markdown)

@@ -7,11 +7,26 @@ import {
   buildPdfHtmlDocument,
   markdownToTipTapHtml,
   normalizeAndSanitizeTipTapHtml,
+  renderNoteSectionHtml,
   closePdfBrowser
 } from './services/pdf.js';
+import { isPatRequestAllowed } from './services/tokens.js';
 import AdmZip from 'adm-zip';
 import path from 'path';
 import fs from 'fs';
+import { execFileSync } from 'child_process';
+
+function extractTextFromPdfBuffer(pdfBuffer: Buffer): string {
+  const tmpPdf = path.join(UPLOADS_DIR, `tmp-verify-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+  fs.writeFileSync(tmpPdf, pdfBuffer);
+  try {
+    return execFileSync('pdftotext', [tmpPdf, '-'], { encoding: 'utf8' });
+  } finally {
+    try {
+      fs.unlinkSync(tmpPdf);
+    } catch {}
+  }
+}
 
 describe('Export and Import Routes', () => {
   let app: FastifyInstance;
@@ -546,9 +561,22 @@ describe('Export and Import Routes', () => {
     expect(res.headers['content-disposition']).toContain('attachment; filename="Architecture Plan.pdf"');
     expect(res.rawPayload.length).toBeGreaterThan(1000);
     expect(res.rawPayload.subarray(0, 5).toString('utf8')).toBe('%PDF-');
+
+    const extractedText = extractTextFromPdfBuffer(res.rawPayload);
+    expect(extractedText).toContain('Architecture Plan');
+    expect(extractedText).toContain('First Ordered Note');
+    expect(extractedText).toContain('Completed task');
+    expect(extractedText).toContain('Pending task');
+    expect(extractedText).toContain('Second Ordered Note');
+    expect(extractedText).toContain('Col A');
+    expect(extractedText).toContain('Val 2');
+    expect(extractedText).toContain('console.log("hello pdf");');
+    expect(extractedText.indexOf('First Ordered Note')).toBeLessThan(
+      extractedText.indexOf('Second Ordered Note')
+    );
   }, 30000);
 
-  it('should generate a PDF from ordered database note IDs via POST /api/export/pdf', async () => {
+  it('should generate a PDF from ordered database note IDs via POST /api/export/pdf preserving exact note sequence', async () => {
     const noteIdA = 'item-pdf-db-a';
     const noteIdB = 'item-pdf-db-b';
     const now = new Date().toISOString();
@@ -575,7 +603,132 @@ describe('Export and Import Routes', () => {
     expect(res.headers['content-disposition']).toContain('attachment; filename="DB Ordered Export.pdf"');
     expect(res.rawPayload.subarray(0, 5).toString('utf8')).toBe('%PDF-');
 
+    const extractedText = extractTextFromPdfBuffer(res.rawPayload);
+    expect(extractedText).toContain('DB Ordered Export');
+    expect(extractedText).toContain('Note Beta');
+    expect(extractedText).toContain('Beta item');
+    expect(extractedText).toContain('Note Alpha');
+    expect(extractedText).toContain('Alpha item');
+    // Verify Note Beta appears BEFORE Note Alpha in the rendered PDF
+    expect(extractedText.indexOf('Note Beta')).toBeLessThan(extractedText.indexOf('Note Alpha'));
+
     db.prepare('DELETE FROM items WHERE id IN (?, ?)').run(noteIdA, noteIdB);
+  }, 30000);
+
+  it('should preserve nested TipTap taskList/taskItem states, tables, wikilinks, and inline local upload images', () => {
+    // 1. Nested TipTap task list where parent is unchecked and child is checked
+    const nestedTipTapHtml = `
+      <ul data-type="taskList">
+        <li data-type="taskItem" data-checked="false">
+          <p>Parent Unchecked</p>
+          <ul data-type="taskList">
+            <li data-type="taskItem" data-checked="true"><p>Child Checked</p></li>
+          </ul>
+        </li>
+      </ul>
+    `;
+    const normalizedNested = normalizeAndSanitizeTipTapHtml(nestedTipTapHtml);
+    expect(normalizedNested).toContain('data-type="taskList"');
+    expect(normalizedNested).toContain('<li data-type="taskItem" data-checked="false"><label><input type="checkbox" disabled="disabled"><span></span></label><div>');
+    expect(normalizedNested).toContain('<li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked" disabled="disabled"><span></span></label><div><p>Child Checked</p></div></li>');
+
+    // 2. Local /uploads/... image resolved to inline base64 data URI
+    const samplePngName = `pdf-inline-test-${Date.now()}.png`;
+    const samplePngPath = path.join(UPLOADS_DIR, samplePngName);
+    const tinyPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    );
+    fs.writeFileSync(samplePngPath, tinyPng);
+
+    try {
+      const htmlWithImg = renderNoteSectionHtml({
+        title: 'Rich Note',
+        content: `See [[Architecture Spec|Arch Doc]]\n\n![Diagram](/uploads/${samplePngName})\n\n| Metric | Target |\n| --- | --- |\n| Latency | <100ms |`
+      });
+      expect(htmlWithImg).toContain('class="wikilink"');
+      expect(htmlWithImg).toContain('data-wikilink="Architecture Spec"');
+      expect(htmlWithImg).toContain('>Arch Doc</a>');
+      expect(htmlWithImg).toContain('src="data:image/png;base64,');
+      expect(htmlWithImg).toContain('<table>');
+      expect(htmlWithImg).toContain('<th>Metric</th>');
+      expect(htmlWithImg).toContain('<td>&lt;100ms</td>');
+    } finally {
+      try {
+        fs.unlinkSync(samplePngPath);
+      } catch {}
+    }
+  });
+
+  it('should export an entire notebook by notebookId excluding archived notes and enforcing multi-tenant isolation', async () => {
+    const nbId = 'nb-pdf-full-test';
+    const otherUserId = 'usr-other-tenant';
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT OR REPLACE INTO users (id, username, password_hash, role, created_at, updated_at)
+      VALUES (?, 'other_tenant', 'hash', 'member', ?, ?)
+    `).run(otherUserId, now, now);
+
+    db.prepare(`
+      INSERT OR REPLACE INTO notebooks (id, user_id, name, color, icon, created_at, updated_at)
+      VALUES (?, ?, 'Full Sprint Notebook', '#22c55e', 'book', ?, ?)
+    `).run(nbId, testUserId, now, now);
+
+    db.prepare(`
+      INSERT OR REPLACE INTO items (id, user_id, notebook_id, title, content, type, is_pinned, is_archived, created_at, updated_at)
+      VALUES
+        ('nb-item-unpinned', ?, ?, 'Unpinned Second', 'Standard note body', 'note', 0, 0, ?, ?),
+        ('nb-item-pinned', ?, ?, 'Pinned First', '| Col1 | Col2 |\n| --- | --- |\n| A1 | B1 |', 'note', 1, 0, ?, ?),
+        ('nb-item-archived', ?, ?, 'Archived Secret', 'Should not be in PDF', 'note', 0, 1, ?, ?),
+        ('nb-item-other-user', ?, ?, 'Other Tenant Private Note', 'Forbidden content', 'note', 0, 0, ?, ?)
+    `).run(
+      testUserId, nbId, now, now,
+      testUserId, nbId, now, now,
+      testUserId, nbId, now, now,
+      otherUserId, nbId, now, now
+    );
+
+    try {
+      // 1. Export by notebookId
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/export/pdf',
+        payload: { notebookId: nbId }
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-disposition']).toContain('attachment; filename="Full Sprint Notebook.pdf"');
+      const pdfText = extractTextFromPdfBuffer(res.rawPayload);
+      expect(pdfText).toContain('Full Sprint Notebook');
+      expect(pdfText).toContain('Pinned First');
+      expect(pdfText).toContain('Unpinned Second');
+      expect(pdfText).not.toContain('Archived Secret');
+      expect(pdfText).not.toContain('Other Tenant Private Note');
+      expect(pdfText.indexOf('Pinned First')).toBeLessThan(pdfText.indexOf('Unpinned Second'));
+
+      // 2. Attempting to export another user's private note via notes: [{ id }] or ids: [...] returns 400
+      const idorRes1 = await app.inject({
+        method: 'POST',
+        url: '/api/export/pdf',
+        payload: { notes: [{ id: 'nb-item-other-user' }] }
+      });
+      expect(idorRes1.statusCode).toBe(400);
+
+      const idorRes2 = await app.inject({
+        method: 'POST',
+        url: '/api/export/pdf',
+        payload: { ids: ['nb-item-other-user'] }
+      });
+      expect(idorRes2.statusCode).toBe(400);
+
+      // 3. Read-only PAT is allowed to call POST /api/export/pdf
+      expect(isPatRequestAllowed('POST', '/api/export/pdf', ['read']).ok).toBe(true);
+    } finally {
+      db.prepare("DELETE FROM items WHERE id IN ('nb-item-unpinned', 'nb-item-pinned', 'nb-item-archived', 'nb-item-other-user')").run();
+      db.prepare('DELETE FROM notebooks WHERE id = ?').run(nbId);
+      db.prepare('DELETE FROM users WHERE id = ?').run(otherUserId);
+    }
   }, 30000);
 });
 

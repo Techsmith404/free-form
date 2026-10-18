@@ -34,7 +34,7 @@ describe('PDF Export Utilities & Client API', () => {
       expect(html).toContain('<a href="https://example.com">link</a>');
     });
 
-    it('renders task lists within note content', () => {
+    it('renders task lists within note content preserving TipTap data-type="taskList" and data-type="taskItem" invariants', () => {
       const item: Item = {
         id: 'test-item-2',
         title: 'Checklist',
@@ -49,9 +49,37 @@ describe('PDF Export Utilities & Client API', () => {
       };
 
       const html = renderItemToHtml(item);
+      expect(html).toContain('data-type="taskList"');
+      expect(html).toContain('data-type="taskItem"');
+      expect(html).toContain('data-checked="true"');
+      expect(html).toContain('data-checked="false"');
       expect(html).toContain('type="checkbox"');
       expect(html).toContain('Completed task');
       expect(html).toContain('Pending task');
+    });
+
+    it('renders markdown tables and [[wikilinks]] accurately for PDF export', () => {
+      const item: Item = {
+        id: 'test-item-table-wiki',
+        title: 'Specs & Links',
+        type: 'note',
+        content: 'Reference [[System Design|Architecture Doc]]\n\n| Service | Port |\n| --- | --- |\n| Fastify | 3000 |',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_favorite: 0,
+        is_pinned: 0,
+        is_archived: 0,
+        hide_from_all: 0
+      };
+
+      const html = renderItemToHtml(item);
+      expect(html).toContain('class="wikilink"');
+      expect(html).toContain('data-wikilink="System Design"');
+      expect(html).toContain('>Architecture Doc</a>');
+      expect(html).toContain('<table>');
+      expect(html).toContain('<th>Service</th>');
+      expect(html).toContain('<td>Fastify</td>');
+      expect(html).toContain('<td>3000</td>');
     });
 
     it('renders counter items with formatted count and unit metadata', () => {
