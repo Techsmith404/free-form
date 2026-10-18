@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Item, FormEntryMetadata, FormTemplate, FormFieldDefinition, DensityMode } from '../../types/index.js';
+import { resolveAssetUrl } from '../../api/index.js';
 import {
   ClipboardList,
   Star,
@@ -412,12 +413,27 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
                   return (
                     <div key={field.id} className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
                       <span className="text-xs text-zinc-400 font-medium block mb-1.5">{field.label}:</span>
-                      {typeof val === 'string' && (val.startsWith('/uploads/') || val.startsWith('data:image')) ? (
+                      {typeof val === 'string' && val ? (
                         <div className="h-20 max-w-[200px] rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950 flex items-center justify-center p-1">
-                          <img src={val} alt="Signature" className="max-h-full object-contain filter drop-shadow" />
+                          <img src={resolveAssetUrl(val)} alt="Signature" className="max-h-full object-contain filter drop-shadow" />
                         </div>
                       ) : (
                         <span className="font-mono text-xs text-brand-400">Signed: {String(val)}</span>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (field.type === 'image') {
+                  return (
+                    <div key={field.id} className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                      <span className="text-xs text-zinc-400 font-medium block mb-1.5">{field.label}:</span>
+                      {typeof val === 'string' && val ? (
+                        <div className="h-24 max-w-[240px] rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950 flex items-center justify-center">
+                          <img src={resolveAssetUrl(val)} alt={field.label} className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <span className="text-xs text-zinc-500 italic">No image attached</span>
                       )}
                     </div>
                   );

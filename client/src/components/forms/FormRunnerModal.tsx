@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FormTemplate, Notebook, Item } from '../../types/index.js';
-import { createItem, updateItem, previewTemplateMarkdown, uploadFile } from '../../api/index.js';
+import { createItem, updateItem, previewTemplateMarkdown, uploadFile, resolveAssetUrl } from '../../api/index.js';
 import { SignaturePad } from './SignaturePad.js';
 import { DynamicTableField } from './DynamicTableField.js';
 import {
@@ -212,7 +212,9 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
       const uploaded = await uploadFile(file);
       handleFieldChange(fieldId, uploaded.url);
     } catch (err) {
-      setError('Failed to upload file. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to upload file. Please try again.');
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -641,7 +643,7 @@ export const FormRunnerModal: React.FC<FormRunnerModalProps> = ({
                       <div className="space-y-2">
                         {val && (
                           <div className="relative w-40 h-28 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950">
-                            <img src={val} alt="Attached" className="w-full h-full object-cover" />
+                            <img src={resolveAssetUrl(val)} alt="Attached" className="w-full h-full object-cover" />
                           </div>
                         )}
                         <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl cursor-pointer text-xs font-medium transition">

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Item, PosterMetadata, PosterImage, DensityMode } from '../../types/index.js';
-import { uploadFile } from '../../api/index.js';
+import { uploadFile, resolveAssetUrl } from '../../api/index.js';
 import { Images, Plus, Trash2, Edit2, X, ZoomIn, EyeOff, RotateCcw, Check, Copy } from 'lucide-react';
 import { hapticTap, hapticSuccess } from '../../services/native.js';
 
@@ -67,7 +67,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
       });
     } catch (err) {
       console.error('Failed to upload image', err);
-      setUploadError('Failed to upload image. Please try again.');
+      setUploadError(err instanceof Error ? err.message : 'Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -281,7 +281,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
                 className="group/img relative aspect-square rounded-xl overflow-hidden bg-zinc-950 cursor-pointer border border-zinc-800 shadow-inner"
               >
                 <img
-                  src={img.url}
+                  src={resolveAssetUrl(img.url)}
                   alt={img.name || 'Poster image'}
                   className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300"
                 />
@@ -349,7 +349,7 @@ export const PosterCard: React.FC<PosterCardProps> = ({
               <X className="w-7 h-7" />
             </button>
             <img
-              src={activeZoomImage.url}
+              src={resolveAssetUrl(activeZoomImage.url)}
               alt={activeZoomImage.name}
               className="max-w-full max-h-[82vh] rounded-2xl object-contain shadow-2xl border border-zinc-800"
             />

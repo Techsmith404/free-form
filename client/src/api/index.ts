@@ -213,7 +213,10 @@ export function resolveAssetUrl(url: string | null | undefined): string {
     return url;
   }
   const base = getServerUrl();
-  return base ? `${base}${url}` : url;
+  if (!base) return url;
+  const cleanBase = base.replace(/\/+$/, '');
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  return `${cleanBase}${cleanUrl}`;
 }
 
 function generateUUID(): string {
@@ -249,6 +252,7 @@ export async function fetchWithTimeout(
     const res = await fetch(input, {
       ...init,
       headers,
+      credentials: init?.credentials ?? 'include',
       signal: controller.signal
     });
     return res;
@@ -712,6 +716,7 @@ export async function exportBatchNotes(ids: string[]): Promise<void> {
   const res = await fetch(apiUrl('/export/batch'), {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify({ ids })
   });
 
@@ -735,6 +740,7 @@ export async function exportPdf(payload: PdfExportRequestPayload & { filename?: 
   const res = await fetch(apiUrl('/export/pdf'), {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify(payload)
   });
 
@@ -816,7 +822,13 @@ export async function counterAction(
 
 export async function fetchCounterHistory(id: string): Promise<CounterHistoryEntry[]> {
   try {
-    const res = await fetch(`${apiUrl('/items')}/${id}/counter/history`);
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${apiUrl('/items')}/${id}/counter/history`, {
+      headers,
+      credentials: 'include'
+    });
     if (res.ok) return res.json();
   } catch {}
   return [];
@@ -895,9 +907,13 @@ export async function deleteTemplate(id: string): Promise<void> {
 
 export async function previewTemplateMarkdown(id: string, values: Record<string, any>): Promise<string> {
   try {
+    const token = getAuthToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`${apiUrl('/templates')}/${id}/preview-markdown`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
+      credentials: 'include',
       body: JSON.stringify({ values })
     });
     if (res.ok) {
@@ -917,34 +933,155 @@ export async function fetchTags(): Promise<Tag[]> {
 }
 
 export async function scrapeUrl(url: string) {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(apiUrl('/scrape'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
+    credentials: 'include',
     body: JSON.stringify({ url })
   });
   if (!res.ok) throw new Error('Failed to scrape URL');
   return res.json();
 }
 
+const VALID_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.avif', '.heic', '.heif', '.bmp', '.ico'];
+
+function isImageFile(file: File): boolean {
+  if (file.type && file.type.startsWith('image/')) return true;
+  const name = (file.name || '').toLowerCase();
+  return VALID_IMAGE_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
+
+async function readFileAsDataUrl(file: File): Promise<string> {
+  let mime = file.type;
+  if (!mime || !mime.startsWith('image/')) {
+    const name = (file.name || '').toLowerCase();
+    for (const ext of VALID_IMAGE_EXTENSIONS) {
+      if (name.endsWith(ext)) {
+        mime = ext === '.svg' ? 'image/svg+xml' : ext === '.jpg' ? 'image/jpeg' : `image/${ext.slice(1)}`;
+        break;
+      }
+    }
+  }
+  if (!mime) mime = 'image/png';
+
+  if (typeof FileReader !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        let result = reader.result as string;
+        if (!result.startsWith('data:image/')) {
+          result = result.replace(/^data:[^;]*/, `data:${mime}`);
+        }
+        resolve(result);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file as data URL'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Fallback for environments without FileReader (e.g. Node / Vitest)
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = typeof btoa !== 'undefined' ? btoa(binary) : Buffer.from(bytes).toString('base64');
+  return `data:${mime};base64,${base64}`;
+}
+
+function getBase64ByteLength(dataUrl: string): number {
+  const commaIdx = dataUrl.indexOf(',');
+  const b64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((b64.length * 3) / 4) - padding);
+}
+
 export async function uploadFile(file: File): Promise<{ url: string; name: string; size: number }> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch(apiUrl('/upload'), {
-    method: 'POST',
-    body: formData
-  });
-  if (!res.ok) throw new Error('Failed to upload file');
-  return res.json();
+
+  let res: Response;
+  try {
+    res = await fetch(apiUrl('/upload'), {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: formData
+    });
+  } catch (networkErr) {
+    if (!isImageFile(file)) {
+      throw new Error('Invalid file type. Only images are allowed.');
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    return {
+      url: dataUrl,
+      name: file.name,
+      size: file.size
+    };
+  }
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || errBody.message || `Failed to upload file (HTTP ${res.status})`);
+  }
+
+  const data = await res.json();
+  return {
+    url: resolveAssetUrl(data.url),
+    name: data.name ?? file.name,
+    size: data.size ?? file.size
+  };
 }
 
 export async function uploadBase64(base64Data: string, filename?: string): Promise<{ url: string; name: string; size: number }> {
-  const res = await fetch(apiUrl('/upload-base64'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ base64Data, filename })
-  });
-  if (!res.ok) throw new Error('Failed to upload base64');
-  return res.json();
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(apiUrl('/upload-base64'), {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ base64Data, filename })
+    });
+  } catch (networkErr) {
+    let dataUrl = base64Data.trim();
+    if (dataUrl.startsWith('data:')) {
+      if (!dataUrl.startsWith('data:image/')) {
+        throw new Error('Invalid file type. Only images are allowed.');
+      }
+    } else {
+      dataUrl = `data:image/png;base64,${dataUrl}`;
+    }
+
+    return {
+      url: dataUrl,
+      name: filename || 'signature.png',
+      size: getBase64ByteLength(dataUrl)
+    };
+  }
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || errBody.message || `Failed to upload file (HTTP ${res.status})`);
+  }
+
+  const data = await res.json();
+  return {
+    url: resolveAssetUrl(data.url),
+    name: data.name ?? (filename || 'signature.png'),
+    size: data.size ?? getBase64ByteLength(base64Data)
+  };
 }
 
 export function getExportUrl(): string {
@@ -1168,9 +1305,13 @@ export async function resolveConflict(
   }
 ): Promise<{ success: boolean; conflictId: string }> {
   try {
+    const token = getAuthToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`${apiUrl('/conflicts')}/${id}/resolve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
+      credentials: 'include',
       body: JSON.stringify(payload)
     });
     if (res.ok) {
@@ -1199,9 +1340,13 @@ export async function checkAuthStatus(): Promise<AuthStatusResponse> {
 }
 
 export async function setupOwner(data: { username: string; password: string; email?: string }): Promise<{ token: string; user: User }> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(apiUrl('/auth/setup'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
+    credentials: 'include',
     body: JSON.stringify(data)
   });
   if (!res.ok) {
@@ -1216,9 +1361,13 @@ export async function setupOwner(data: { username: string; password: string; ema
 }
 
 export async function loginUser(data: { username: string; password: string; remember_me?: boolean }): Promise<{ token: string; user: User }> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(apiUrl('/auth/login'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
+    credentials: 'include',
     body: JSON.stringify(data)
   });
   if (!res.ok) {
@@ -1233,9 +1382,13 @@ export async function loginUser(data: { username: string; password: string; reme
 }
 
 export async function registerUser(data: { username: string; password: string; email?: string; invite_code: string }): Promise<{ token: string; user: User }> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(apiUrl('/auth/register'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
+    credentials: 'include',
     body: JSON.stringify(data)
   });
   if (!res.ok) {
@@ -1251,9 +1404,13 @@ export async function registerUser(data: { username: string; password: string; e
 
 export async function logoutUser(): Promise<void> {
   try {
+    const token = getAuthToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     await fetch(apiUrl('/auth/logout'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers,
+      credentials: 'include'
     });
   } catch {}
   await setAuthToken(null);
@@ -1266,12 +1423,13 @@ export async function fetchInvites(): Promise<Invite[]> {
 }
 
 export async function createInvite(data: { role?: string; max_uses?: number; expires_in_days?: number }): Promise<Invite> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(apiUrl('/auth/invites'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getAuthToken()}`
-    },
+    headers,
+    credentials: 'include',
     body: JSON.stringify(data)
   });
   if (!res.ok) {
@@ -1282,11 +1440,13 @@ export async function createInvite(data: { role?: string; max_uses?: number; exp
 }
 
 export async function deleteInvite(code: string): Promise<void> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${apiUrl('/auth/invites')}/${code}`, {
     method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${getAuthToken()}`
-    }
+    headers,
+    credentials: 'include'
   });
   if (!res.ok) throw new Error('Failed to delete invite');
 }
@@ -1310,6 +1470,7 @@ export async function importBackup(file: File): Promise<{ success: boolean; stat
   const res = await fetch(apiUrl('/import'), {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: formData
   });
 

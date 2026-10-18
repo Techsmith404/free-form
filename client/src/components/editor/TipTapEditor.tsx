@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -288,6 +288,8 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
     }
   };
 
+  const editorRef = useRef<any>(null);
+
   const editor = useEditor({
     editable,
     extensions: [
@@ -360,9 +362,90 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
           }
         }
         return false;
+      },
+      handlePaste: (view, event) => {
+        const items = Array.from(event.clipboardData?.items || []);
+        const itemFiles = items
+          .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+          .map((item) => item.getAsFile())
+          .filter((f): f is File => Boolean(f));
+        const clipboardFiles = Array.from(event.clipboardData?.files || []).filter((f) =>
+          f.type.startsWith('image/')
+        );
+        const imageFiles = clipboardFiles.length > 0 ? clipboardFiles : itemFiles;
+        if (imageFiles.length === 0) return false;
+
+        event.preventDefault();
+        (async () => {
+          try {
+            setIsUploading(true);
+            setUploadError(null);
+            for (const file of imageFiles) {
+              const uploaded = await uploadFile(file);
+              if (editorRef.current) {
+                editorRef.current.chain().focus().setImage({ src: uploaded.url, alt: uploaded.name }).run();
+              } else {
+                const node = view.state.schema.nodes.image?.create({ src: uploaded.url, alt: uploaded.name });
+                if (node) {
+                  view.dispatch(view.state.tr.replaceSelectionWith(node));
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Failed to upload image', err);
+            setUploadError(err instanceof Error ? err.message : 'Failed to upload image. Please try again.');
+          } finally {
+            setIsUploading(false);
+          }
+        })();
+        return true;
+      },
+      handleDrop: (view, event) => {
+        const files = Array.from(event.dataTransfer?.files || []).filter((f) =>
+          f.type.startsWith('image/')
+        );
+        if (files.length === 0) return false;
+
+        event.preventDefault();
+        const coords = { left: event.clientX, top: event.clientY };
+        const dropPos = view.posAtCoords(coords)?.pos;
+
+        (async () => {
+          try {
+            setIsUploading(true);
+            setUploadError(null);
+            for (const file of files) {
+              const uploaded = await uploadFile(file);
+              if (editorRef.current) {
+                const chain = editorRef.current.chain().focus();
+                if (typeof dropPos === 'number') {
+                  chain.setTextSelection(dropPos);
+                }
+                chain.setImage({ src: uploaded.url, alt: uploaded.name }).run();
+              } else {
+                const node = view.state.schema.nodes.image?.create({ src: uploaded.url, alt: uploaded.name });
+                if (node) {
+                  const tr =
+                    typeof dropPos === 'number'
+                      ? view.state.tr.insert(dropPos, node)
+                      : view.state.tr.replaceSelectionWith(node);
+                  view.dispatch(tr);
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Failed to upload image', err);
+            setUploadError(err instanceof Error ? err.message : 'Failed to upload image. Please try again.');
+          } finally {
+            setIsUploading(false);
+          }
+        })();
+        return true;
       }
     }
   });
+
+  editorRef.current = editor;
 
   // Sync when initialMarkdown changes externally
   useEffect(() => {
@@ -494,7 +577,7 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
       editor.chain().focus().setImage({ src: uploaded.url, alt: uploaded.name }).run();
     } catch (err) {
       console.error('Failed to upload image', err);
-      setUploadError('Failed to upload image. Please try again.');
+      setUploadError(err instanceof Error ? err.message : 'Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
       e.target.value = '';

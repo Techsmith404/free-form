@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { uploadBase64 } from '../../api/index.js';
+import { uploadBase64, resolveAssetUrl } from '../../api/index.js';
 import { RotateCcw, Check, PenTool } from 'lucide-react';
 
 interface SignaturePadProps {
@@ -117,7 +117,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
       onChange(uploaded.url);
     } catch (err) {
       console.error('Failed to save signature', err);
-      setError('Failed to save signature. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to save signature. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -166,7 +166,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
         {signatureUrl ? (
           <div className="relative w-full h-full flex items-center justify-center p-2 bg-zinc-950/80">
             <img
-              src={signatureUrl}
+              src={resolveAssetUrl(signatureUrl)}
               alt="Signed signature"
               className="max-h-full max-w-full object-contain filter drop-shadow"
             />

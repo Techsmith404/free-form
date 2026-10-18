@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Notebook, Item, PosterMetadata, PosterImage } from '../../types/index.js';
-import { createItem, updateItem, uploadFile } from '../../api/index.js';
+import { createItem, updateItem, uploadFile, resolveAssetUrl } from '../../api/index.js';
 import { X, Images, Save, Plus, Loader2 } from 'lucide-react';
 
 interface NewPosterModalProps {
@@ -52,7 +52,7 @@ export const NewPosterModal: React.FC<NewPosterModalProps> = ({
       setImages(newImgs);
     } catch (err) {
       console.error(err);
-      setError('Failed to upload image(s). Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to upload image(s). Please try again.');
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -186,7 +186,7 @@ export const NewPosterModal: React.FC<NewPosterModalProps> = ({
             <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
               {images.map((img) => (
                 <div key={img.id} className="relative group aspect-square rounded-lg overflow-hidden bg-zinc-950 border border-zinc-800">
-                  <img src={img.url} alt="" className="w-full h-full object-cover" />
+                  <img src={resolveAssetUrl(img.url)} alt="" className="w-full h-full object-cover" />
                   <button
                     type="button"
                     onClick={() => handleRemoveImage(img.id)}
