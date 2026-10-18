@@ -22,6 +22,7 @@ import { webhookAndTokenRoutes } from './routes/webhooks.js';
 import { importRoutes } from './routes/import.js';
 import { resolvePat, isPatRequestAllowed } from './services/tokens.js';
 import { addClient, startRealtimeTicker, stopRealtimeTicker } from './services/realtime.js';
+import { closePdfBrowser } from './services/pdf.js';
 
 import crypto from 'crypto';
 import fastifyCookie from '@fastify/cookie';
@@ -264,6 +265,7 @@ async function main() {
     app.log.info(`Received ${signal}. Shutting down gracefully...`);
     try {
       stopRealtimeTicker();
+      await closePdfBrowser();
       await app.close();
       const { db } = await import('./db/index.js');
       db.close();

@@ -3,6 +3,12 @@ import fastify, { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import { db, initDatabase, UPLOADS_DIR } from './db/index.js';
 import { exportRoutes } from './routes/export.js';
+import {
+  buildPdfHtmlDocument,
+  markdownToTipTapHtml,
+  normalizeAndSanitizeTipTapHtml,
+  closePdfBrowser
+} from './services/pdf.js';
 import AdmZip from 'adm-zip';
 import path from 'path';
 import fs from 'fs';
@@ -45,6 +51,7 @@ describe('Export and Import Routes', () => {
     db.prepare('DELETE FROM templates WHERE user_id = ?').run(testUserId);
     db.prepare('DELETE FROM tags WHERE user_id = ?').run(testUserId);
     db.prepare('DELETE FROM users WHERE id = ?').run(testUserId);
+    await closePdfBrowser();
     await app.close();
   });
 
@@ -467,5 +474,108 @@ describe('Export and Import Routes', () => {
     // Clean up
     db.prepare('DELETE FROM items WHERE id IN (?, ?)').run(noteId1, noteId2);
   });
+
+  it('should build print-friendly TipTap HTML preserving data-type="taskList" and taskItem attributes', () => {
+    const md = `# Sprint Checklist\n\n- [x] Ship PDF API\n- [ ] Write unit tests\n\n| Feature | Status |\n| --- | --- |\n| Puppeteer | Ready |\n\n\`\`\`ts\nconst ok = true;\n\`\`\``;
+    const tipTapHtml = markdownToTipTapHtml(md);
+    expect(tipTapHtml).toContain('data-type="taskList"');
+    expect(tipTapHtml).toContain('data-type="taskItem"');
+    expect(tipTapHtml).toContain('data-checked="true"');
+    expect(tipTapHtml).toContain('data-checked="false"');
+
+    const fullDoc = buildPdfHtmlDocument({
+      notebookName: 'Engineering Notebook',
+      notes: [
+        {
+          id: 'note-1',
+          title: 'Sprint Checklist',
+          content: md,
+          tags: ['backend', 'pdf']
+        },
+        {
+          id: 'note-2',
+          title: 'Second Note',
+          html: '<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>Already HTML</p></li></ul><script>alert(1)</script>'
+        }
+      ]
+    });
+
+    expect(fullDoc).toContain('Engineering Notebook');
+    expect(fullDoc).toContain('data-type="taskList"');
+    expect(fullDoc).toContain('data-note-index="0"');
+    expect(fullDoc).toContain('data-note-index="1"');
+    expect(fullDoc).toContain('#backend');
+    expect(fullDoc).not.toContain('<script>');
+  });
+
+  it('should return 400 when POST /api/export/pdf is called with empty payload', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/export/pdf',
+      payload: { notes: [] }
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.payload);
+    expect(body.error).toContain('At least one note or HTML payload is required');
+  });
+
+  it('should generate and return a valid PDF attachment via POST /api/export/pdf with ordered HTML notes', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/export/pdf',
+      payload: {
+        notebookName: 'Architecture Plan',
+        notes: [
+          {
+            id: 'pdf-note-1',
+            title: 'First Ordered Note',
+            html: '<h1>First Ordered Note</h1><p>Intro paragraph.</p><ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked></label><div><p>Completed task</p></div></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Pending task</p></div></li></ul>'
+          },
+          {
+            id: 'pdf-note-2',
+            title: 'Second Ordered Note',
+            content: '## Table & Code\n\n| Col A | Col B |\n| --- | --- |\n| Val 1 | Val 2 |\n\n```js\nconsole.log("hello pdf");\n```'
+          }
+        ]
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toContain('attachment; filename="Architecture Plan.pdf"');
+    expect(res.rawPayload.length).toBeGreaterThan(1000);
+    expect(res.rawPayload.subarray(0, 5).toString('utf8')).toBe('%PDF-');
+  }, 30000);
+
+  it('should generate a PDF from ordered database note IDs via POST /api/export/pdf', async () => {
+    const noteIdA = 'item-pdf-db-a';
+    const noteIdB = 'item-pdf-db-b';
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT OR REPLACE INTO items (id, user_id, title, content, type, is_archived, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'note', 0, ?, ?), (?, ?, ?, ?, 'note', 0, ?, ?)
+    `).run(
+      noteIdA, testUserId, 'Note Alpha', '- [x] Alpha item', now, now,
+      noteIdB, testUserId, 'Note Beta', '- [ ] Beta item', now, now
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/export/pdf',
+      payload: {
+        notebookName: 'DB Ordered Export',
+        ids: [noteIdB, noteIdA]
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toContain('attachment; filename="DB Ordered Export.pdf"');
+    expect(res.rawPayload.subarray(0, 5).toString('utf8')).toBe('%PDF-');
+
+    db.prepare('DELETE FROM items WHERE id IN (?, ?)').run(noteIdA, noteIdB);
+  }, 30000);
 });
 

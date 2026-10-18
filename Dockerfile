@@ -30,10 +30,11 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 ENV DATA_DIR=/data
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install system dependencies: tini for PID 1 signal handling and curl for healthcheck
+# Install system dependencies: tini for PID 1 signal handling, curl for healthcheck, and chromium for PDF export
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends tini curl && \
+    apt-get install -y --no-install-recommends tini curl chromium fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
 
 # Install production dependencies only

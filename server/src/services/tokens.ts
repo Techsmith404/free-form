@@ -79,7 +79,11 @@ export function isPatRequestAllowed(method: string, pathname: string, scopes: st
   if (pathname === '/api/tokens' || pathname.startsWith('/api/tokens/')) {
     return { ok: false, error: 'API tokens cannot manage other API tokens' };
   }
-  const isRead = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+  const isRead =
+    method === 'GET' ||
+    method === 'HEAD' ||
+    method === 'OPTIONS' ||
+    pathname.startsWith('/api/export');
   if (!isRead && !scopes.includes('write')) {
     return { ok: false, error: 'This token is read-only' };
   }

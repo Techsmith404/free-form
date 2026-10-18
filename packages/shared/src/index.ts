@@ -302,6 +302,34 @@ export const BatchExportNotesSchema = z.object({
 });
 export type BatchExportNotesPayload = z.infer<typeof BatchExportNotesSchema>;
 
+export const PdfExportNoteItemSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  html: z.string().optional(),
+  content: z.string().optional(),
+  markdown: z.string().optional(),
+  type: ItemTypeSchema.optional(),
+  metadata: z.any().optional(),
+  tags: z.array(z.union([TagSchema, z.string()])).optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional()
+});
+export type PdfExportNoteItem = z.infer<typeof PdfExportNoteItemSchema>;
+
+export const PdfExportRequestSchema = z.object({
+  title: z.string().optional(),
+  notebookName: z.string().optional(),
+  notebook_name: z.string().optional(),
+  notebookId: z.string().optional(),
+  notebook_id: z.string().optional(),
+  notes: z.array(z.union([PdfExportNoteItemSchema, z.string()])).optional(),
+  items: z.array(z.union([PdfExportNoteItemSchema, z.string()])).optional(),
+  html: z.union([z.string(), z.array(z.string())]).optional(),
+  ids: z.array(z.string()).optional(),
+  noteIds: z.array(z.string()).optional()
+});
+export type PdfExportRequestPayload = z.infer<typeof PdfExportRequestSchema>;
+
 // ==========================================
 // 9. Sync & Conflict Protocol
 // ==========================================

@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { db, UPLOADS_DIR } from '../db/index.js';
 import { refreshItemLinks } from '../services/links.js';
+import { generatePdfBuffer, PdfNoteSection } from '../services/pdf.js';
 
 function extractBackupJsonFromZip(buf: Buffer): any {
   // 1. Try adm-zip first
@@ -236,6 +237,235 @@ export async function exportRoutes(fastify: FastifyInstance) {
     }
 
     await archive.finalize();
+  });
+
+  // POST /api/export/pdf - Generate and return a PDF attachment from ordered notes / HTML payload
+  fastify.post('/api/export/pdf', async (request, reply) => {
+    const body = (request.body as any) || {};
+    const userId = (request as any).user?.id;
+
+    let notebookName: string | undefined =
+      body.notebookName || body.notebook_name || body.title || undefined;
+    const notebookId: string | undefined = body.notebookId || body.notebook_id || undefined;
+
+    if (notebookId && !notebookName) {
+      const nbRow = (userId
+        ? db
+            .prepare('SELECT name FROM notebooks WHERE id = ? AND (user_id = ? OR user_id IS NULL)')
+            .get(notebookId, userId)
+        : db.prepare('SELECT name FROM notebooks WHERE id = ?').get(notebookId)) as
+        | { name: string }
+        | undefined;
+      if (nbRow?.name) {
+        notebookName = nbRow.name;
+      }
+    }
+
+    const noteSections: PdfNoteSection[] = [];
+
+    // 1. Ordered `notes` or `items` array (objects or HTML strings)
+    const rawList = Array.isArray(body.notes)
+      ? body.notes
+      : Array.isArray(body.items)
+      ? body.items
+      : null;
+
+    if (rawList && rawList.length > 0) {
+      // Collect any IDs that lack inline html/content so we can hydrate them from SQLite
+      const missingIds: string[] = [];
+      for (const entry of rawList) {
+        if (
+          entry &&
+          typeof entry === 'object' &&
+          typeof entry.id === 'string' &&
+          !entry.html &&
+          entry.content === undefined &&
+          entry.markdown === undefined
+        ) {
+          missingIds.push(entry.id);
+        }
+      }
+
+      const dbItemMap = new Map<string, any>();
+      if (missingIds.length > 0) {
+        const placeholders = missingIds.map(() => '?').join(',');
+        const sql = `
+          SELECT i.*, n.name as notebook_name
+          FROM items i
+          LEFT JOIN notebooks n ON i.notebook_id = n.id
+          WHERE i.id IN (${placeholders}) ${userId ? 'AND (i.user_id = ? OR i.user_id IS NULL)' : ''}
+        `;
+        const params = userId ? [...missingIds, userId] : [...missingIds];
+        const rows = db.prepare(sql).all(...params) as any[];
+        for (const r of rows) {
+          dbItemMap.set(r.id, r);
+        }
+      }
+
+      for (const entry of rawList) {
+        if (typeof entry === 'string') {
+          if (entry.trim()) {
+            noteSections.push({ html: entry });
+          }
+        } else if (entry && typeof entry === 'object') {
+          const dbRow = entry.id ? dbItemMap.get(entry.id) : undefined;
+          let tags = entry.tags;
+          if (!tags && dbRow?.id) {
+            tags = db
+              .prepare(
+                `SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tag_id WHERE it.item_id = ?`
+              )
+              .all(dbRow.id) as Array<{ name: string }>;
+          }
+
+          if (!notebookName && dbRow?.notebook_name) {
+            notebookName = dbRow.notebook_name;
+          }
+
+          noteSections.push({
+            id: entry.id ?? dbRow?.id,
+            title: entry.title ?? dbRow?.title,
+            html: entry.html,
+            content: entry.content ?? dbRow?.content,
+            markdown: entry.markdown,
+            type: entry.type ?? dbRow?.type ?? 'note',
+            metadata: entry.metadata ?? dbRow?.metadata,
+            tags,
+            created_at: entry.created_at ?? dbRow?.created_at,
+            updated_at: entry.updated_at ?? dbRow?.updated_at
+          });
+        }
+      }
+    } else if (Array.isArray(body.html) && body.html.length > 0) {
+      // 2. Ordered array of HTML strings in `html`
+      for (const h of body.html) {
+        if (typeof h === 'string' && h.trim()) {
+          noteSections.push({ html: h });
+        }
+      }
+    } else if (typeof body.html === 'string' && body.html.trim()) {
+      // 3. Single HTML string payload
+      noteSections.push({
+        title: body.noteTitle || undefined,
+        html: body.html
+      });
+    } else if (
+      (Array.isArray(body.ids) && body.ids.length > 0) ||
+      (Array.isArray(body.noteIds) && body.noteIds.length > 0)
+    ) {
+      // 4. Ordered array of note IDs (`ids` or `noteIds`)
+      const orderedIds: string[] = Array.isArray(body.ids) ? body.ids : body.noteIds;
+      const placeholders = orderedIds.map(() => '?').join(',');
+      const sql = `
+        SELECT i.*, n.name as notebook_name
+        FROM items i
+        LEFT JOIN notebooks n ON i.notebook_id = n.id
+        WHERE i.id IN (${placeholders}) ${userId ? 'AND (i.user_id = ? OR i.user_id IS NULL)' : ''}
+      `;
+      const params = userId ? [...orderedIds, userId] : [...orderedIds];
+      const rows = db.prepare(sql).all(...params) as any[];
+      const rowMap = new Map<string, any>();
+      for (const r of rows) {
+        rowMap.set(r.id, r);
+      }
+
+      // Preserve exact requested order
+      for (const id of orderedIds) {
+        const r = rowMap.get(id);
+        if (!r) continue;
+        if (!notebookName && r.notebook_name) {
+          notebookName = r.notebook_name;
+        }
+        const tags = db
+          .prepare(
+            `SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tag_id WHERE it.item_id = ?`
+          )
+          .all(r.id) as Array<{ name: string }>;
+
+        noteSections.push({
+          id: r.id,
+          title: r.title,
+          content: r.content,
+          type: r.type,
+          metadata: r.metadata,
+          tags,
+          created_at: r.created_at,
+          updated_at: r.updated_at
+        });
+      }
+    } else if (notebookId) {
+      // 5. Fallback: entire notebook by `notebookId`
+      const sql =
+        notebookId === 'uncategorized'
+          ? `SELECT * FROM items WHERE notebook_id IS NULL AND is_archived = 0 ${
+              userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''
+            } ORDER BY is_pinned DESC, updated_at DESC`
+          : `SELECT * FROM items WHERE notebook_id = ? AND is_archived = 0 ${
+              userId ? 'AND (user_id = ? OR user_id IS NULL)' : ''
+            } ORDER BY is_pinned DESC, updated_at DESC`;
+      const params =
+        notebookId === 'uncategorized'
+          ? userId
+            ? [userId]
+            : []
+          : userId
+          ? [notebookId, userId]
+          : [notebookId];
+      const rows = db.prepare(sql).all(...params) as any[];
+      for (const r of rows) {
+        const tags = db
+          .prepare(
+            `SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tag_id WHERE it.item_id = ?`
+          )
+          .all(r.id) as Array<{ name: string }>;
+        noteSections.push({
+          id: r.id,
+          title: r.title,
+          content: r.content,
+          type: r.type,
+          metadata: r.metadata,
+          tags,
+          created_at: r.created_at,
+          updated_at: r.updated_at
+        });
+      }
+    }
+
+    if (noteSections.length === 0) {
+      return reply
+        .code(400)
+        .send({ error: 'At least one note or HTML payload is required to generate a PDF' });
+    }
+
+    try {
+      const pdfBuffer = await generatePdfBuffer({
+        title: body.title,
+        notebookName,
+        notes: noteSections
+      });
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const rawBaseName =
+        body.filename ||
+        notebookName ||
+        (noteSections.length === 1 && noteSections[0].title) ||
+        `free-form-notebook-${dateStr}`;
+      const safeFilename =
+        String(rawBaseName)
+          .replace(/\.pdf$/i, '')
+          .replace(/[/\\?%*:|"<>]/g, '-')
+          .trim() || `free-form-notebook-${dateStr}`;
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${safeFilename}.pdf"`);
+      reply.header('Content-Length', pdfBuffer.length);
+      return reply.send(pdfBuffer);
+    } catch (err: any) {
+      request.log.error({ err }, 'Failed to generate PDF');
+      return reply.code(500).send({
+        error: 'Failed to generate PDF: ' + (err?.message || 'Internal error')
+      });
+    }
   });
 
   // POST /api/import - Import backup (ZIP or JSON)
