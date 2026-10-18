@@ -17,7 +17,8 @@ import {
   User,
   Invite,
   ApiToken,
-  Webhook
+  Webhook,
+  PdfExportRequestPayload
 } from '../types/index.js';
 import {
   dbGetItems,
@@ -720,6 +721,54 @@ export async function exportBatchNotes(ids: string[]): Promise<void> {
   const a = document.createElement('a');
   a.href = url;
   a.download = `free-form-selected-${new Date().toISOString().split('T')[0]}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+export async function exportPdf(payload: PdfExportRequestPayload & { filename?: string }): Promise<void> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(apiUrl('/export/pdf'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    let errMsg = 'Failed to generate PDF';
+    try {
+      const errJson = await res.json();
+      if (errJson?.error) errMsg = errJson.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(errMsg);
+  }
+
+  const blob = await res.blob();
+  const dateStr = new Date().toISOString().split('T')[0];
+  let filename = payload.filename || (payload.notebookName ? `${payload.notebookName}.pdf` : `notebook-export-${dateStr}.pdf`);
+
+  const disposition = res.headers.get('content-disposition');
+  if (disposition) {
+    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+    if (match?.[1]) {
+      filename = decodeURIComponent(match[1].trim());
+    }
+  }
+
+  if (!filename.toLowerCase().endsWith('.pdf')) {
+    filename += '.pdf';
+  }
+
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

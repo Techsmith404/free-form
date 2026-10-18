@@ -15,6 +15,7 @@ import {
   ClipboardList,
   Trash2,
   Download,
+  FileDown,
   Edit2,
   Sparkles,
   Layers,
@@ -45,6 +46,7 @@ interface SidebarProps {
   onNewNotebook: (parentId?: string | null) => void;
   onEditNotebook: (notebook: Notebook) => void;
   onDeleteNotebook: (id: string) => void;
+  onExportNotebookPdf?: (notebook: Notebook) => void;
   onNewNote: () => void;
   onNewCounter: () => void;
   onNewBookmark: () => void;
@@ -71,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewNotebook,
   onEditNotebook,
   onDeleteNotebook,
+  onExportNotebookPdf,
   onNewNote,
   onNewCounter,
   onNewBookmark,
@@ -466,6 +469,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               >
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
+                              {onExportNotebookPdf && (
+                                <button
+                                  type="button"
+                                  onClick={() => onExportNotebookPdf(nb)}
+                                  className="h-9 w-9 flex items-center justify-center rounded-lg text-zinc-400 hover:text-brand-400 hover:bg-zinc-700 transition touch-manipulation"
+                                  title="Export Notebook as PDF"
+                                >
+                                  <FileDown className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => onEditNotebook(nb)}

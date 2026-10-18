@@ -69,6 +69,7 @@ import { AuthModal } from './components/modals/AuthModal.js';
 import { ManageUsersModal } from './components/modals/ManageUsersModal.js';
 import { CommandPaletteModal } from './components/modals/CommandPaletteModal.js';
 import { BatchMoveModal } from './components/modals/BatchMoveModal.js';
+import { ExportPdfModal } from './components/modals/ExportPdfModal.js';
 import { useRealtime } from './context/RealtimeContext.js';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js';
 import { useAuth } from './context/AuthContext.js';
@@ -230,6 +231,9 @@ export const App: React.FC = () => {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchMoveModalOpen, setBatchMoveModalOpen] = useState(false);
+  const [exportPdfModalOpen, setExportPdfModalOpen] = useState(false);
+  const [exportPdfTargetNotebook, setExportPdfTargetNotebook] = useState<Notebook | null>(null);
+  const [exportPdfNotes, setExportPdfNotes] = useState<Item[]>([]);
 
   const closeConfirmModal = () => {
     setConfirmModal((prev) => ({ ...prev, open: false, isLoading: false }));
@@ -245,6 +249,11 @@ export const App: React.FC = () => {
     // 0b. Batch move modal
     if (batchMoveModalOpen) {
       setBatchMoveModalOpen(false);
+      return true;
+    }
+    // 0c. Export PDF modal
+    if (exportPdfModalOpen) {
+      setExportPdfModalOpen(false);
       return true;
     }
     // 0c. Omni-Command Palette
@@ -994,6 +1003,30 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleOpenExportPdf = (targetNotebook?: Notebook | null, specificNotes?: Item[]) => {
+    const nb =
+      targetNotebook !== undefined
+        ? targetNotebook
+        : activeNotebookId
+        ? notebooks.find((n) => n.id === activeNotebookId) || null
+        : null;
+    setExportPdfTargetNotebook(nb);
+
+    let candidateNotes: Item[];
+    if (specificNotes && specificNotes.length > 0) {
+      candidateNotes = specificNotes;
+    } else if (nb) {
+      candidateNotes = items.filter((i) => i.notebook_id === nb.id && !i.is_archived);
+    } else if (activeNotebookId === 'uncategorized') {
+      candidateNotes = items.filter((i) => !i.notebook_id && !i.is_archived);
+    } else {
+      candidateNotes = filteredItems.filter((i) => !i.is_archived);
+    }
+
+    setExportPdfNotes(candidateNotes);
+    setExportPdfModalOpen(true);
+  };
+
   // Notebook Handlers
   const handleNotebookSaved = (nb: Notebook) => {
     setNotebooks((prev) => {
@@ -1202,6 +1235,7 @@ export const App: React.FC = () => {
         onNewNotebook={(parentId) => setNotebookModal({ open: true, notebook: null, defaultParentId: parentId || null })}
         onEditNotebook={(nb) => setNotebookModal({ open: true, notebook: nb })}
         onDeleteNotebook={handleDeleteNotebook}
+        onExportNotebookPdf={handleOpenExportPdf}
         onNewNote={() => setNoteModal({ open: true, item: null })}
         onNewCounter={() => setCounterModal({ open: true, item: null })}
         onNewBookmark={() => setBookmarkModal({ open: true, item: null })}
@@ -1228,6 +1262,7 @@ export const App: React.FC = () => {
           density={density}
           onDensityChange={handleDensityChange}
           activeNotebook={activeNotebook}
+          onExportPdf={() => handleOpenExportPdf()}
           isExpandedAll={expandAllCards}
           onToggleExpandAll={() => setExpandAllCards((prev) => !prev)}
           onQuickAdd={handleQuickAdd}
@@ -2152,6 +2187,13 @@ export const App: React.FC = () => {
         onBatchTogglePin={handleBatchTogglePin}
         onBatchToggleFavorite={handleBatchToggleFavorite}
         onBatchExport={handleBatchExport}
+        onBatchExportPdf={() => {
+          const selectedNotes = items.filter((i) => selectedIds.has(i.id));
+          handleOpenExportPdf(
+            activeNotebookId ? notebooks.find((n) => n.id === activeNotebookId) || null : null,
+            selectedNotes
+          );
+        }}
         onBatchDelete={handleBatchDelete}
         onClearSelection={handleClearSelection}
         isTrashMode={activeFilter === 'trash'}
@@ -2191,6 +2233,7 @@ export const App: React.FC = () => {
         onNewNotebook={() => setNotebookModal({ open: true, notebook: null, defaultParentId: activeNotebookId })}
         onOpenTimers={() => setTimersModalOpen(true)}
         onOpenSettings={() => setSettingsModalOpen(true)}
+        onExportPdf={() => handleOpenExportPdf()}
         onToggleTheme={() => {
           const next = settings.theme === 'dark' ? 'light' : 'dark';
           handleThemeChange(next);
@@ -2199,6 +2242,14 @@ export const App: React.FC = () => {
           loadData();
           refreshConflicts();
         }}
+      />
+
+      {/* Export Notebook to PDF Modal */}
+      <ExportPdfModal
+        isOpen={exportPdfModalOpen}
+        onClose={() => setExportPdfModalOpen(false)}
+        notebook={exportPdfTargetNotebook}
+        notes={exportPdfNotes}
       />
     </div>
   );

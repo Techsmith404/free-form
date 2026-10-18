@@ -3,6 +3,7 @@ import { Item, Notebook, Tag, FormTemplate } from '../../types/index.js';
 import {
   Search,
   Command,
+  FileDown,
   FileText,
   Folder,
   Tag as TagIcon,
@@ -53,6 +54,7 @@ interface CommandPaletteModalProps {
   onOpenSettings: () => void;
   onToggleTheme: () => void;
   onManualSync?: () => void;
+  onExportPdf?: () => void;
 }
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
@@ -74,7 +76,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onOpenTimers,
   onOpenSettings,
   onToggleTheme,
-  onManualSync
+  onManualSync,
+  onExportPdf
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -190,6 +193,18 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         onOpenSettings();
       }
     },
+    ...(onExportPdf ? [{
+      id: 'act-export-pdf',
+      title: 'Export Notebook to PDF',
+      subtitle: 'Select, reorder, and export notes into a PDF document',
+      category: 'action' as const,
+      icon: <FileDown className="w-4 h-4 text-brand-400" />,
+      badge: 'Action',
+      onSelect: () => {
+        onClose();
+        onExportPdf();
+      }
+    }] : []),
     ...(onManualSync ? [{
       id: 'act-sync',
       title: 'Sync Now',
@@ -202,7 +217,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         onManualSync();
       }
     }] : [])
-  ], [onClose, onNewNote, onNewCounter, onNewBookmark, onNewPoster, onNewNotebook, onOpenTimers, onToggleTheme, onOpenSettings, onManualSync]);
+  ], [onClose, onNewNote, onNewCounter, onNewBookmark, onNewPoster, onNewNotebook, onOpenTimers, onToggleTheme, onOpenSettings, onManualSync, onExportPdf]);
 
   // Compute filtered results
   const results: PaletteResult[] = useMemo(() => {

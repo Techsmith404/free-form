@@ -1,4 +1,30 @@
 import { marked } from 'marked';
+import { Item } from '../types/index.js';
+
+/**
+ * Formats and renders any item (note, counter, bookmark, poster) into sanitized HTML
+ * ready for rich display, export, or PDF generation.
+ */
+export function renderItemToHtml(item: Item): string {
+  let content = item.content || '';
+  const meta = item.metadata || {};
+
+  if (item.type === 'counter') {
+    const countVal = meta.count ?? meta.value ?? 0;
+    const unitVal = meta.unit ? ` ${meta.unit}` : '';
+    content = `**Current Count:** ${countVal}${unitVal}\n\n${content}`;
+  } else if (item.type === 'bookmark' && meta.url) {
+    const desc = meta.ogDescription ? `\n\n> ${meta.ogDescription}` : '';
+    content = `**Link:** [${meta.url}](${meta.url})${desc}\n\n${content}`;
+  } else if (item.type === 'poster' && Array.isArray(meta.images) && meta.images.length > 0) {
+    const imgsMd = meta.images
+      .map((img: any) => `![${img.caption || img.name || 'Image'}](${img.url})`)
+      .join('\n\n');
+    content = `${imgsMd}\n\n${content}`;
+  }
+
+  return marked.parse(content || '') as string;
+}
 
 /**
  * Downloads a single note or markdown content as a .md file.

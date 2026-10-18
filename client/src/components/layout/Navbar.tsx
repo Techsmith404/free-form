@@ -13,6 +13,7 @@ import {
   Bookmark,
   Images,
   ClipboardList,
+  FileDown,
   Sparkles,
   Plus,
   X,
@@ -44,6 +45,7 @@ interface NavbarProps {
   density?: DensityMode;
   onDensityChange?: (density: DensityMode) => void;
   activeNotebook: Notebook | null;
+  onExportPdf?: () => void;
   onQuickAdd: () => void;
   onOpenMobileSidebar: () => void;
   isExpandedAll?: boolean;
@@ -68,6 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   density = 'cozy',
   onDensityChange,
   activeNotebook,
+  onExportPdf,
   onQuickAdd,
   onOpenMobileSidebar,
   isExpandedAll,
@@ -345,19 +348,35 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </button>
 
-          {/* Desktop Quick Add */}
+          {/* Desktop Quick Add & Notebook Export */}
           {activeNotebook && (
-            <button
-              type="button"
-              onClick={() => {
-                hapticTap();
-                onQuickAdd();
-              }}
-              className="hidden sm:flex items-center gap-1.5 h-10 px-4 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold transition shadow-md shadow-brand-500/20 active:scale-95"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>{activeNotebook.default_template_name ? 'New Entry' : 'Add Note'}</span>
-            </button>
+            <div className="hidden sm:flex items-center gap-1.5">
+              {onExportPdf && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticTap();
+                    onExportPdf();
+                  }}
+                  className="flex items-center gap-1.5 h-10 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition active:scale-95 touch-manipulation"
+                  title={`Export ${activeNotebook.name} as PDF`}
+                >
+                  <FileDown className="w-4 h-4 text-brand-400" />
+                  <span className="hidden md:inline">Export PDF</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  hapticTap();
+                  onQuickAdd();
+                }}
+                className="flex items-center gap-1.5 h-10 px-4 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold transition shadow-md shadow-brand-500/20 active:scale-95"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>{activeNotebook.default_template_name ? 'New Entry' : 'Add Note'}</span>
+              </button>
+            </div>
           )}
 
           {/* Universal Synced Timer / Reminders Trigger */}

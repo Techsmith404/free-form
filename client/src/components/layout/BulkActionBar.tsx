@@ -5,6 +5,7 @@ import {
   Pin,
   Trash2,
   Download,
+  FileDown,
   X,
   CheckSquare,
   Square
@@ -20,6 +21,7 @@ interface BulkActionBarProps {
   onBatchTogglePin: () => void;
   onBatchToggleFavorite: () => void;
   onBatchExport: () => void;
+  onBatchExportPdf?: () => void;
   onBatchDelete: () => void;
   onClearSelection: () => void;
   isTrashMode?: boolean;
@@ -34,6 +36,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
   onBatchTogglePin,
   onBatchToggleFavorite,
   onBatchExport,
+  onBatchExportPdf,
   onBatchDelete,
   onClearSelection,
   isTrashMode = false
@@ -123,8 +126,23 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
           title="Export selected notes as ZIP"
         >
           <Download className="w-4 h-4 text-blue-400 shrink-0" />
-          <span className="hidden sm:inline">Export</span>
+          <span className="hidden sm:inline">ZIP</span>
         </button>
+
+        {onBatchExportPdf && (
+          <button
+            type="button"
+            onClick={() => {
+              hapticTap();
+              onBatchExportPdf();
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-zinc-200 hover:text-white hover:bg-zinc-800 transition touch-manipulation min-h-[44px] text-xs font-semibold"
+            title="Export selected notes as PDF"
+          >
+            <FileDown className="w-4 h-4 text-brand-400 shrink-0" />
+            <span className="hidden sm:inline">PDF</span>
+          </button>
+        )}
 
         <button
           type="button"
