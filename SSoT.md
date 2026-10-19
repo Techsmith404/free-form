@@ -60,7 +60,7 @@ free-form/
 │   │   │   ├── items/          # Cards: Note, FormEntry, Counter, Bookmark, Poster, ItemListItem
 │   │   │   ├── layout/         # Sidebar (hierarchical tree), Navbar (filters, mobile back, timer pill)
 │   │   ├── modals/         # New Notebook, Bookmark, Counter, Poster, Markdown Viewer, Timers & Reminders, AlarmAlert, SettingsModal, ExportPdfModal
-│   │   ├── utils/          # Client utilities: export helpers (renderItemToHtml, marked taskList), haptics, formatting
+│   │   ├── utils/          # Client utilities: cardGrid.ts (desktop row-synchronized accordion expansion), export helpers (renderItemToHtml, marked taskList), haptics, formatting
 │   │   ├── views/          # Templates View
 │   │   ├── context/        # RealtimeContext (WebSocket state, auto-reconnect, cross-device sync)
 │   │   ├── services/       # Web Audio API alarm synthesizer & Native Device Service (Haptics, Local Notifications)
@@ -357,6 +357,7 @@ Free Form supports two distinct, responsive browsing layouts switchable via the 
 * **Color-Coded Priority Accents:** When an item has a configured priority (`items.priority`), note cards render a 3px colored left border accent matching the priority's hex color, plus an elegant badge pill (`bg-opacity-15`, border, text).
 * **Rich Form Note Previews:** [`FormEntryCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/FormEntryCard.tsx) directly renders filled field values: golden star ratings (`★`), status badge pills, mini-tables, key-value data with units, and signature thumbnails.
 * **Rich Note Card Previews & Interactive Checklists:** [`NoteCard.tsx`](file:///home/codaine/Projects/free-form/client/src/components/items/NoteCard.tsx) parses and renders authentic GitHub-Flavored Markdown directly on the card with `.note-markdown` styles. Checklists rendered in note previews feature interactive, touch-friendly checkboxes with instant optimistic toggling and backend persistence. Typography supports prominent H1–H3 hierarchy and green-accented blockquotes (`>`) with inherited paragraph styling and subtle background fills in both light and dark themes.
+* **Full-Card Preview Modal Flow ([`MarkdownViewerModal.tsx`](file:///home/codaine/Projects/free-form/client/src/components/modals/MarkdownViewerModal.tsx)):** Clicking or tapping anywhere on a `NoteCard` or `ListCard` opens `MarkdownViewerModal` (`client/src/components/modals/MarkdownViewerModal.tsx`) as a dedicated full card preview modal instead of directly entering edit mode. The preview modal presents full formatted Markdown with interactive checklists (allowing instant checking/unchecking with backend persistence directly in preview), priority border accents and badges, hide-from-all indicator, pin/favorite toggles, export actions (copy rich text, `.md` download, print/PDF), and an interactive footer displaying update timestamps, clickable tag chips (filtering by `#tag`), and bidirectional linked references (backlinks). A prominent **Edit** button in the header seamlessly closes the preview and launches `NoteEditorModal` (`client/src/components/modals/NoteEditorModal.tsx`) (or `FormRunnerModal` for form entries) for quick editing.
 * **Special Checklist & List Card Styles (`ListCard.tsx`):** When a note is predominantly or entirely a checklist or list (analyzed via `markdownList.ts`), it is automatically elevated into a dedicated special card presentation (akin to `CounterCard`):
   * **First-Line Header Preservation:** Leading headings (`#`, `##`, `###`) are strictly preserved as true styled headings rather than being demoted to plain-text preambles.
   * **Blockquote (`>`) Support:** Blockquotes are parsed as dedicated lines and styled with a 3px emerald left border, subtle background container, and italic text.
@@ -364,8 +365,9 @@ Free Form supports two distinct, responsive browsing layouts switchable via the 
   * **Standard List Mode:** Sky/Cyan theme badge (`[List]`), item count badge, circular numbered pills (`1`, `2`, `3`) or glowing cyan bullets, refined row spacing, and overflow accordion.
 * **Accordion Controls:**
   * Each form card, note card, and list card features an individual **"Show Details / Full Note" / "Collapse"** chevron toggle.
+  * **Desktop Row-Synchronized Card Expansion ([`cardGrid.ts`](file:///home/codaine/Projects/free-form/client/src/utils/cardGrid.ts)):** In desktop Grid View, expanding or collapsing any card synchronizes its expansion state across all cards in the same grid row via `client/src/utils/cardGrid.ts` (`getGridColumnCount`, `getRowItemIds`, `resolveCardExpanded`, `toggleRowCardExpansion`). This prevents empty stretched card boxes when CSS Grid equalizes row height across columns to match the tallest expanded card in that row.
   * When collapsed, note cards clamp to a maximum height (`max-h-40 sm:max-h-48`) with a subtle bottom gradient fade; list cards show the first 5 items with a "+ N more items" pill; when expanded, the full formatted note or list is rendered.
-  * The top Navbar features a global **Expand All / Collapse All** (`ChevronsUpDown`) toggle that orchestrates cards simultaneously.
+  * The top Navbar features a global **Expand All / Collapse All** (`ChevronsUpDown`) toggle that orchestrates cards simultaneously (resetting individual row overrides upon global toggle or notebook switch).
   * **Template-Bound Notebooks Expand by Default:** Opening a notebook bound to a form template automatically defaults all cards to expanded.
 
 ### 2. Compact List View (`viewMode === 'list'`, `ItemListItem.tsx`)

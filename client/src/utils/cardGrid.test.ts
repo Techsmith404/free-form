@@ -112,6 +112,20 @@ describe('cardGrid utility', () => {
       expect(resolveCardExpanded(formProcessed, {}, false)).toBe(false);
     });
 
+    it('defaults processed form_entry to false when not overridden, and true when explicitly overridden by row expansion', () => {
+      expect(resolveCardExpanded(formProcessed, {}, false)).toBe(false);
+      expect(resolveCardExpanded(formProcessed, {}, true)).toBe(false);
+
+      const itemsWithForm = [
+        formProcessed,
+        createMockItem('peer-1'),
+        createMockItem('peer-2')
+      ];
+      const rowOverrides = toggleRowCardExpansion(itemsWithForm, 'form-2', 3, {}, false);
+      expect(rowOverrides['form-2']).toBe(true);
+      expect(resolveCardExpanded(formProcessed, rowOverrides, false)).toBe(true);
+    });
+
     it('falls back to expandAllCards for unprocessed forms or notes without overrides', () => {
       expect(resolveCardExpanded(formUnprocessed, {}, true)).toBe(true);
       expect(resolveCardExpanded(formUnprocessed, {}, false)).toBe(false);
@@ -146,6 +160,37 @@ describe('cardGrid utility', () => {
         '1': false,
         '2': false
       });
+    });
+
+    it('synchronizes a 3-column desktop row: expands all 3 cards and collapses all 3 cards', () => {
+      const desktopItems = [
+        createMockItem('id-1'),
+        createMockItem('id-2'),
+        createMockItem('id-3'),
+        createMockItem('id-4'),
+        createMockItem('id-5'),
+        createMockItem('id-6')
+      ];
+
+      // Expanding id-1 in row 0 sets true for id-1, id-2, id-3, leaves id-4, id-5, id-6 untouched
+      const expandedOverrides = toggleRowCardExpansion(desktopItems, 'id-1', 3, {}, false);
+      expect(expandedOverrides).toEqual({
+        'id-1': true,
+        'id-2': true,
+        'id-3': true
+      });
+      expect(expandedOverrides['id-4']).toBeUndefined();
+      expect(expandedOverrides['id-5']).toBeUndefined();
+      expect(expandedOverrides['id-6']).toBeUndefined();
+
+      // Collapsing an expanded card in that row sets false for all 3 cards in that row
+      const collapsedOverrides = toggleRowCardExpansion(desktopItems, 'id-2', 3, expandedOverrides, false);
+      expect(collapsedOverrides).toEqual({
+        'id-1': false,
+        'id-2': false,
+        'id-3': false
+      });
+      expect(collapsedOverrides['id-4']).toBeUndefined();
     });
 
     it('returns current overrides unmodified if target item is not found', () => {
