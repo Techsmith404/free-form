@@ -30,6 +30,7 @@ interface FormEntryCardProps {
   density?: DensityMode;
   template?: FormTemplate | null;
   isExpanded?: boolean;
+  onToggleExpand?: (item: Item) => void;
   isTrashMode?: boolean;
   onOpenForm: (item: Item) => void;
   onOpenMarkdown: (item: Item) => void;
@@ -50,6 +51,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
   density = 'cozy',
   template,
   isExpanded = false,
+  onToggleExpand,
   isTrashMode = false,
   onOpenForm,
   onOpenMarkdown,
@@ -77,7 +79,7 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
   }, [isExpanded]);
 
   // When processed, default to compact view unless user explicitly expanded this specific card
-  const defaultExpanded = isProcessed ? false : isExpanded;
+  const defaultExpanded = onToggleExpand ? isExpanded : (isProcessed ? false : isExpanded);
   const expanded = localExpanded !== null ? localExpanded : defaultExpanded;
 
   // Schema fields to render
@@ -247,7 +249,11 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
                   type="button"
                   onClick={() => {
                     hapticTap();
-                    setLocalExpanded(!expanded);
+                    if (onToggleExpand) {
+                      onToggleExpand(item);
+                    } else {
+                      setLocalExpanded(!expanded);
+                    }
                   }}
                   className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
                   title={expanded ? 'Collapse details' : 'Show full details'}
@@ -527,7 +533,14 @@ export const FormEntryCard: React.FC<FormEntryCardProps> = ({
       >
         <button
           type="button"
-          onClick={() => setLocalExpanded(!expanded)}
+          onClick={() => {
+            hapticTap();
+            if (onToggleExpand) {
+              onToggleExpand(item);
+            } else {
+              setLocalExpanded(!expanded);
+            }
+          }}
           aria-label={expanded ? `Collapse details for ${item.title}` : `Show full details for ${item.title}`}
           className="text-xs text-zinc-400 hover:text-zinc-200 font-semibold flex items-center gap-1 min-h-[44px] px-2 py-2.5 sm:py-1 justify-center sm:justify-start touch-manipulation"
         >

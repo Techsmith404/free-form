@@ -16,6 +16,7 @@ interface NoteCardProps {
   priorities?: NotePriority[];
   density?: DensityMode;
   isExpanded?: boolean;
+  onToggleExpand?: (item: Item) => void;
   isTrashMode?: boolean;
   onOpen: (item: Item) => void;
   onUpdate?: (updated: Item) => void;
@@ -36,6 +37,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   priorities = [],
   density = 'cozy',
   isExpanded = false,
+  onToggleExpand,
   isTrashMode = false,
   onOpen,
   onUpdate,
@@ -81,6 +83,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         priorities={priorities}
         density={density}
         isExpanded={isExpanded}
+        onToggleExpand={onToggleExpand}
         isTrashMode={isTrashMode}
         onOpen={onOpen}
         onUpdate={onUpdate}
@@ -290,7 +293,11 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               type="button"
               onClick={() => {
                 hapticTap();
-                setLocalExpanded(!expanded);
+                if (onToggleExpand) {
+                  onToggleExpand(item);
+                } else {
+                  setLocalExpanded(!expanded);
+                }
               }}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
               title={expanded ? 'Collapse preview' : 'Show full note'}

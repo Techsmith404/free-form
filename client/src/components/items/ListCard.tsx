@@ -33,6 +33,7 @@ interface ListCardProps {
   priorities?: NotePriority[];
   density?: DensityMode;
   isExpanded?: boolean;
+  onToggleExpand?: (item: Item) => void;
   isTrashMode?: boolean;
   onOpen: (item: Item) => void;
   onUpdate?: (updated: Item) => void;
@@ -53,6 +54,7 @@ export const ListCard: React.FC<ListCardProps> = ({
   priorities = [],
   density = 'cozy',
   isExpanded = false,
+  onToggleExpand,
   isTrashMode = false,
   onOpen,
   onUpdate,
@@ -323,7 +325,11 @@ export const ListCard: React.FC<ListCardProps> = ({
               type="button"
               onClick={() => {
                 hapticTap();
-                setLocalExpanded(!expanded);
+                if (onToggleExpand) {
+                  onToggleExpand(item);
+                } else {
+                  setLocalExpanded(!expanded);
+                }
               }}
               className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition touch-manipulation"
               title={expanded ? 'Collapse preview' : 'Show all items'}
@@ -555,7 +561,11 @@ export const ListCard: React.FC<ListCardProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 hapticTap();
-                setLocalExpanded(true);
+                if (onToggleExpand) {
+                  onToggleExpand(item);
+                } else {
+                  setLocalExpanded(!expanded);
+                }
               }}
               className="pt-1 flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 cursor-pointer"
             >

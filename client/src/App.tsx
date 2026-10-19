@@ -75,6 +75,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js';
 import { useAuth } from './context/AuthContext.js';
 import { hapticTap, hapticMedium, hapticSuccess, registerBackButtonHandler, isNative } from './services/native.js';
 import { normalizeLinkTitle } from './utils/wikilinks.js';
+import { getGridColumnCount, resolveCardExpanded, toggleRowCardExpansion } from './utils/cardGrid.js';
 
 import { Plus, FileText, Hash, Bookmark, Images, ClipboardList, Sparkles, Folder, Star, ChevronRight, ChevronLeft, EyeOff, Layers, Clock, RotateCcw, Trash2 } from 'lucide-react';
 
@@ -186,6 +187,22 @@ export const App: React.FC = () => {
     });
   };
   const [expandAllCards, setExpandAllCards] = useState<boolean>(false);
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  );
+  const [cardExpandedOverrides, setCardExpandedOverrides] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    setCardExpandedOverrides({});
+  }, [expandAllCards, activeNotebookId]);
   const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileFabMenuOpen, setMobileFabMenuOpen] = useState(false);
@@ -1126,7 +1143,7 @@ export const App: React.FC = () => {
         setMarkdownViewerModal({ open: true, item: it });
       }
     } else {
-      setNoteModal({ open: true, item: it });
+      setMarkdownViewerModal({ open: true, item: it });
     }
   };
 
@@ -1137,11 +1154,7 @@ export const App: React.FC = () => {
       (it) => it.type === 'note' && !it.is_archived && normalizeLinkTitle(it.title || '') === norm
     );
     if (found) {
-      if (activeFilter === 'trash' || Boolean(found.is_archived)) {
-        setMarkdownViewerModal({ open: true, item: found });
-      } else {
-        setNoteModal({ open: true, item: found });
-      }
+      setMarkdownViewerModal({ open: true, item: found });
     } else {
       setMarkdownViewerModal({ open: false, item: null });
       setNoteModal({
@@ -1661,7 +1674,18 @@ export const App: React.FC = () => {
                             item={item}
                             density={density}
                             template={templates.find((t) => t.id === item.metadata?.template_id)}
-                            isExpanded={expandAllCards}
+                            isExpanded={resolveCardExpanded(item, cardExpandedOverrides, expandAllCards)}
+                            onToggleExpand={(it) =>
+                              setCardExpandedOverrides((prev) =>
+                                toggleRowCardExpansion(
+                                  filteredItems,
+                                  it.id,
+                                  getGridColumnCount(viewportWidth, density),
+                                  prev,
+                                  expandAllCards
+                                )
+                              )
+                            }
                             isTrashMode={activeFilter === 'trash'}
                             onOpenForm={(it) => {
                               const tpl = templates.find((t) => t.id === item.metadata?.template_id);
@@ -1690,15 +1714,20 @@ export const App: React.FC = () => {
                             item={item}
                             density={density}
                             priorities={settings.priorities}
-                            isExpanded={expandAllCards}
+                            isExpanded={resolveCardExpanded(item, cardExpandedOverrides, expandAllCards)}
+                            onToggleExpand={(it) =>
+                              setCardExpandedOverrides((prev) =>
+                                toggleRowCardExpansion(
+                                  filteredItems,
+                                  it.id,
+                                  getGridColumnCount(viewportWidth, density),
+                                  prev,
+                                  expandAllCards
+                                )
+                              )
+                            }
                             isTrashMode={activeFilter === 'trash'}
-                            onOpen={(it) => {
-                              if (activeFilter === 'trash') {
-                                setMarkdownViewerModal({ open: true, item: it });
-                              } else {
-                                setNoteModal({ open: true, item: it });
-                              }
-                            }}
+                            onOpen={(it) => setMarkdownViewerModal({ open: true, item: it })}
                             onUpdate={handleItemSaved}
                             onToggleFavorite={handleToggleFavorite}
                             onTogglePin={handleTogglePin}
@@ -2099,11 +2128,16 @@ export const App: React.FC = () => {
         <MarkdownViewerModal
           item={markdownViewerModal.item}
           items={items}
+          priorities={settings.priorities}
           isTrashMode={activeFilter === 'trash'}
           onRestore={handleRestoreItem}
           onClose={() => setMarkdownViewerModal({ open: false, item: null })}
           onNavigateWikilink={handleNavigateWikilink}
           onNavigateItem={handleOpenItem}
+          onUpdate={handleItemSaved}
+          onToggleFavorite={handleToggleFavorite}
+          onTogglePin={handleTogglePin}
+          onSelectTag={setSelectedTag}
           onEdit={(it) => {
             setMarkdownViewerModal({ open: false, item: null });
             if (it.type === 'form_entry') {
